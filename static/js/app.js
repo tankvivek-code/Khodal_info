@@ -76,13 +76,16 @@ function formatDateDisplay(val) {
         }
     }
 
-    // 4. Match ISO YYYY-MM-DD or YYYY/MM/DD
+    // 4. Match ISO YYYY-MM-DD or YYYY/MM/DD or YYYY-DD-MM (Excel US-locale flip)
     const mIso = s.match(/(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
     if (mIso) {
-        const day = String(mIso[3]).padStart(2, '0');
-        const month = String(mIso[2]).padStart(2, '0');
-        const year = mIso[1];
-        return `${day}-${month}-${year}`;
+        const y = mIso[1];
+        const p1 = parseInt(mIso[2], 10);
+        const p2 = parseInt(mIso[3], 10);
+        if (p2 === 10 && p1 >= 1 && p1 <= 12) {
+            return `${String(p1).padStart(2, '0')}-10-${y}`;
+        }
+        return `${String(p2).padStart(2, '0')}-${String(p1).padStart(2, '0')}-${y}`;
     }
 
     // 5. Match DD-MM-YYYY or DD/MM/YYYY or D-M-YYYY
@@ -118,7 +121,13 @@ function normalizeDateToIso(val) {
     }
     const mIso = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
     if (mIso) {
-        return `${mIso[1]}-${String(mIso[2]).padStart(2, '0')}-${String(mIso[3]).padStart(2, '0')}`;
+        const y = mIso[1];
+        const p1 = parseInt(mIso[2], 10);
+        const p2 = parseInt(mIso[3], 10);
+        if (p2 === 10 && p1 >= 1 && p1 <= 12) {
+            return `${y}-10-${String(p1).padStart(2, '0')}`;
+        }
+        return `${y}-${String(p1).padStart(2, '0')}-${String(p2).padStart(2, '0')}`;
     }
     return s;
 }
@@ -210,6 +219,19 @@ async function initDataStore() {
                 const parsed = JSON.parse(cached);
                 if (Array.isArray(parsed)) {
                     staticRecords = parsed;
+                    let modified = false;
+                    staticRecords.forEach(r => {
+                        if (r.record_date) {
+                            const norm = normalizeDateToIso(r.record_date);
+                            if (norm !== r.record_date) {
+                                r.record_date = norm;
+                                modified = true;
+                            }
+                        }
+                    });
+                    if (modified) {
+                        localStorage.setItem(STORAGE_KEY, JSON.stringify(staticRecords));
+                    }
                 }
             } catch (e) {}
         } else {
