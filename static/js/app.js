@@ -160,14 +160,16 @@ try {
     localStorage.removeItem("khodal_records_store");
 } catch (e) {}
 
-let isStaticMode = window.location.hostname.includes("github.io") || window.location.protocol === "file:";
+const isOnlineServer = (window.location.protocol === "http:" || window.location.protocol === "https:");
+let isStaticMode = !isOnlineServer;
 let staticRecords = [];
-const STORAGE_KEY = "khodal_records_store_v5";
-const FILES_STORAGE_KEY = "khodal_files_list_v5";
+const STORAGE_KEY = "khodal_records_store_v6";
+const FILES_STORAGE_KEY = "khodal_files_list_v6";
 
 // Purge any legacy default/dummy data stores from previous versions
 (function purgeLegacyData() {
     const legacyKeys = [
+        "khodal_records_store_v5", "khodal_files_list_v5",
         "khodal_records_store_v4", "khodal_files_list_v4",
         "khodal_records_store_v3", "khodal_files_list_v3",
         "khodal_records_store_v2", "khodal_files_list_v2",
@@ -187,10 +189,6 @@ function getStaticFiles() {
             if (Array.isArray(parsed) && parsed.length > 0) return parsed;
         } catch (e) {}
     }
-    if (window.KHODAL_INITIAL_FILES && Array.isArray(window.KHODAL_INITIAL_FILES) && window.KHODAL_INITIAL_FILES.length > 0) {
-        saveStaticFiles(window.KHODAL_INITIAL_FILES);
-        return window.KHODAL_INITIAL_FILES;
-    }
     return [];
 }
 
@@ -201,71 +199,30 @@ function saveStaticFiles(filesList) {
 }
 
 async function initDataStore() {
-    if (!isStaticMode) {
+    if (isOnlineServer) {
+        // Enforce Server Mode - SQLite khodal_office.db is the authoritative single source of truth
+        isStaticMode = false;
+        updateDatabaseStatusBadge();
         try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 1200);
-            const test = await fetch("/api/info", { signal: controller.signal });
-            clearTimeout(timeoutId);
-            if (!test.ok) isStaticMode = true;
+            await fetch("/api/info");
         } catch (e) {
-            isStaticMode = true;
+            console.warn("Backend API warning:", e);
         }
+        return;
     }
 
+    // Only if running purely offline without server (e.g. file:/// or GitHub Pages)
+    isStaticMode = true;
     updateDatabaseStatusBadge();
-
-    if (isStaticMode) {
-        console.log("⚡ Khodal Office Hub running in Protected Client-Side Mode");
-        if (navigator.storage && navigator.storage.persist) {
-            navigator.storage.persist().then(p => {
-                if (p) console.log("🛡️ Storage is marked PERSISTENT.");
-            }).catch(() => {});
-        }
-
-        const cached = localStorage.getItem(STORAGE_KEY);
-        let loaded = false;
-        if (cached) {
-            try {
-                const parsed = JSON.parse(cached);
-                if (Array.isArray(parsed) && parsed.length > 0) {
-                    staticRecords = parsed;
-                    loaded = true;
-                }
-            } catch (e) {}
-        }
-
-        // AUTO-RECOVERY from permanent database seed file (data/records.js)
-        if (!loaded || staticRecords.length === 0) {
-            if (window.KHODAL_RECORDS && Array.isArray(window.KHODAL_RECORDS) && window.KHODAL_RECORDS.length > 0) {
-                console.log(`🛡️ Auto-recovering ${window.KHODAL_RECORDS.length} records from permanent database file!`);
-                staticRecords = JSON.parse(JSON.stringify(window.KHODAL_RECORDS));
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(staticRecords));
-                if (window.KHODAL_INITIAL_FILES) {
-                    saveStaticFiles(window.KHODAL_INITIAL_FILES);
-                }
-                setTimeout(() => {
-                    showToast(`🛡️ All ${staticRecords.length} client records safely auto-recovered from permanent database!`, "success");
-                }, 700);
-            } else {
-                staticRecords = [];
+    staticRecords = [];
+    const cached = localStorage.getItem(STORAGE_KEY);
+    if (cached) {
+        try {
+            const parsed = JSON.parse(cached);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+                staticRecords = parsed;
             }
-        }
-
-        // Auto-heal dates in staticRecords
-        let modified = false;
-        staticRecords.forEach(r => {
-            if (r.record_date) {
-                const norm = normalizeDateToIso(r.record_date);
-                if (norm !== r.record_date) {
-                    r.record_date = norm;
-                    modified = true;
-                }
-            }
-        });
-        if (modified) {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(staticRecords));
-        }
+        } catch (e) {}
     }
 }
 
@@ -1528,6 +1485,37 @@ async function submitFileUpload() {
     progressBox.classList.remove("hidden");
     submitBtn.disabled = true;
 
+        // 1. ONLINE SERVER MODE: Always upload to FastAPI backend & SQLite database
+    if (isOnlineServer && !isStaticMode) {
+        try {
+            const res = await fetch("/api/upload", {
+                method: "POST",
+                body: formData
+            });
+
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.detail || "Upload failed");
+
+            showToast(data.message || `Successfully imported ${data.imported_rows} records!`, "success");
+            closeModal("modal-upload");
+
+            selectedUploadFile = null;
+            document.getElementById("file-input").value = "";
+            document.getElementById("selected-file-name").classList.add("hidden");
+
+            await loadDailyProgress();
+            await fetchRecords(1);
+
+        } catch (err) {
+            showToast(err.message, "error");
+        } finally {
+            progressBox.classList.add("hidden");
+            submitBtn.disabled = false;
+        }
+        return;
+    }
+
+    // 2. OFFLINE CLIENT-SIDE FALLBACK (only if opened via file:/// without server)
     if (isStaticMode) {
         if (!window.XLSX) {
             showToast("SheetJS library is loading, please try again", "warning");
@@ -2513,12 +2501,156 @@ async function handleRestoreBackupFile(event) {
     reader.readAsText(file);
 }
 
+
+
+// =========================================================================
+// MASTER USER AUTHENTICATION (manish / manish@7575)
+// =========================================================================
+const AUTH_STORAGE_KEY = "khodal_master_session_v1";
+
+function checkAuthentication() {
+    const saved = localStorage.getItem(AUTH_STORAGE_KEY) || sessionStorage.getItem(AUTH_STORAGE_KEY);
+    if (saved) {
+        try {
+            const user = JSON.parse(saved);
+            if (user && user.username && user.username.toLowerCase() === "manish") {
+                showAuthenticatedUI(user);
+                return true;
+            }
+        } catch (e) {}
+    }
+    showLoginModal();
+    return false;
+}
+
+function showLoginModal() {
+    const modal = document.getElementById("auth-login-modal");
+    if (modal) modal.classList.remove("hidden");
+    const uInput = document.getElementById("login-username");
+    const pInput = document.getElementById("login-password");
+    if (uInput && !uInput.value) uInput.value = "manish";
+    if (pInput) {
+        pInput.value = "";
+        setTimeout(() => pInput.focus(), 150);
+    }
+}
+
+function showAuthenticatedUI(user) {
+    const modal = document.getElementById("auth-login-modal");
+    if (modal) modal.classList.add("hidden");
+    const badge = document.getElementById("user-profile-badge");
+    if (badge) badge.classList.remove("hidden");
+    const nameEl = document.getElementById("user-display-name");
+    if (nameEl) nameEl.textContent = user.full_name || "Manish";
+    refreshIcons();
+}
+
+async function handleMasterLogin(e) {
+    if (e) e.preventDefault();
+    const uInput = document.getElementById("login-username");
+    const pInput = document.getElementById("login-password");
+    const errAlert = document.getElementById("login-error-alert");
+    const errText = document.getElementById("login-error-text");
+    const submitBtn = document.getElementById("login-submit-btn");
+
+    const username = (uInput ? uInput.value : "").trim();
+    const password = (pInput ? pInput.value : "").trim();
+
+    if (!username || !password) {
+        if (errAlert) errAlert.classList.remove("hidden");
+        if (errText) errText.textContent = "Please enter both User ID and Password.";
+        return;
+    }
+
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<span class="inline-block animate-spin mr-1">⌛</span> Verifying...';
+    }
+
+    let authenticated = false;
+    let userInfo = null;
+
+    if (!isStaticMode) {
+        try {
+            const resp = await fetch("/api/auth/login", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ username, password })
+            });
+            const data = await resp.json();
+            if (resp.ok && data.status === "success") {
+                authenticated = true;
+                userInfo = data.user;
+            } else {
+                if (errAlert) errAlert.classList.remove("hidden");
+                if (errText) errText.textContent = data.detail || "Invalid User ID or Password.";
+            }
+        } catch (err) {
+            if (username.toLowerCase() === "manish" && password === "manish@7575") {
+                authenticated = true;
+                userInfo = { username: "manish", full_name: "Manish", role: "master" };
+            }
+        }
+    } else {
+        if (username.toLowerCase() === "manish" && password === "manish@7575") {
+            authenticated = true;
+            userInfo = { username: "manish", full_name: "Manish", role: "master" };
+        } else {
+            if (errAlert) errAlert.classList.remove("hidden");
+            if (errText) errText.textContent = "Invalid User ID or Password. (Master User: manish)";
+        }
+    }
+
+    if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<i data-lucide="log-in" class="w-4 h-4"></i><span>Sign In to Office Hub</span>';
+        refreshIcons();
+    }
+
+    if (authenticated && userInfo) {
+        if (errAlert) errAlert.classList.add("hidden");
+        localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(userInfo));
+        sessionStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(userInfo));
+        showAuthenticatedUI(userInfo);
+        showToast(`Welcome back, ${userInfo.full_name || "Manish"}!`, "success");
+        initApp();
+    }
+}
+
+function logoutMasterUser() {
+    if (!confirm("Are you sure you want to log out of Khodal Office Hub?")) return;
+    localStorage.removeItem(AUTH_STORAGE_KEY);
+    sessionStorage.removeItem(AUTH_STORAGE_KEY);
+    if (!isStaticMode) {
+        fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+    }
+    showToast("Logged out successfully.", "info");
+    showLoginModal();
+}
+
+function togglePasswordVisibility(inputId, iconId) {
+    const input = document.getElementById(inputId);
+    const icon = document.getElementById(iconId);
+    if (!input) return;
+    if (input.type === "password") {
+        input.type = "text";
+        if (icon) icon.setAttribute("data-lucide", "eye-off");
+    } else {
+        input.type = "password";
+        if (icon) icon.setAttribute("data-lucide", "eye");
+    }
+    refreshIcons();
+}
+
 // Initialize application after all components and stores are defined
 function boot() {
-    initApp();
+    refreshIcons();
     setupDropzone();
     setupWindowDragAndDrop();
     setupKeyboardListeners();
+    if (checkAuthentication()) {
+        initApp();
+    }
 }
 
 if (document.readyState === "loading") {

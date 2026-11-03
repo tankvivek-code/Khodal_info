@@ -14,3 +14,4 @@ if errorlevel 0 (
     echo [ERROR] Could not create shortcut automatically.
 )
 pause
+

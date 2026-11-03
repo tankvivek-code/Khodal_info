@@ -13,12 +13,15 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import io
+import hashlib
 import csv
 
 from database import (
     init_db,
     backup_database_json,
     restore_database_json,
+    verify_user,
+    get_file_blob,
     add_uploaded_file,
     get_all_files,
     get_file_by_id,
@@ -80,6 +83,43 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+
+@app.post("/api/auth/login")
+async def login(credentials: Dict[str, str]):
+    """Authenticate master user (manish / manish@7575)."""
+    username = credentials.get("username", "")
+    password = credentials.get("password", "")
+    user = verify_user(username, password)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid User ID or Password. Please check your credentials.")
+    
+    token = hashlib.sha256(f"{user['username']}:{time.time()}:khodal_office_secret".encode()).hexdigest()
+    return {
+        "status": "success",
+        "message": f"Welcome, {user['full_name']}!",
+        "token": token,
+        "user": user
+    }
+
+
+@app.get("/api/auth/me")
+async def get_current_user():
+    """Return default master user profile."""
+    return {
+        "status": "success",
+        "user": {
+            "username": "manish",
+            "full_name": "Manish",
+            "role": "master"
+        }
+    }
+
+
+@app.post("/api/auth/logout")
+async def logout():
+    return {"status": "success", "message": "Logged out successfully"}
 
 
 @app.get("/api/info")
@@ -190,23 +230,28 @@ async def upload_daily_file(
     saved_path = os.path.join(UPLOAD_DIR, safe_filename)
     
     try:
+        file_bytes = await file.read()
         with open(saved_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+            buffer.write(file_bytes)
             
-        file_size = os.path.getsize(saved_path)
+        file_size = len(file_bytes)
         
         # 1. Parse data according to service rules
         records, summary = parse_service_excel_or_csv(saved_path, 0, forced_service=service_type)
         actual_svc = summary.get("service_type", service_type)
+        sheets_count = summary.get("sheets_count", 1)
+        sheet_names = summary.get("sheet_names", [])
         
-        # 2. Add file record in DB
+        # 2. Add file record in DB with raw binary BLOB stored inside SQLite
         file_id = add_uploaded_file(
             filename=filename,
             service_type=actual_svc,
             file_date=file_date or (records[0]["record_date"] if records else ""),
             stored_path=saved_path,
             file_size=file_size,
-            row_count=0
+            row_count=0,
+            file_blob=file_bytes,
+            sheet_names=sheet_names
         )
         
         # Assign file_id to records
@@ -247,19 +292,24 @@ async def list_files():
 
 @app.get("/api/files/{file_id}/download")
 async def download_original_file(file_id: int):
+    file_blob, filename = get_file_blob(file_id)
+    if file_blob:
+        return StreamingResponse(
+            io.BytesIO(file_blob),
+            media_type="application/octet-stream",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+        )
     file_info = get_file_by_id(file_id)
     if not file_info:
-        raise HTTPException(status_code=404, detail="File not found")
-        
+        raise HTTPException(status_code=404, detail="File not found in database")
     stored_path = file_info.get("stored_path")
-    if not stored_path or not os.path.exists(stored_path):
-        raise HTTPException(status_code=404, detail="Physical file missing on server disk")
-        
-    return FileResponse(
-        path=stored_path,
-        filename=file_info.get("filename", "download.xlsx"),
-        media_type="application/octet-stream"
-    )
+    if stored_path and os.path.exists(stored_path):
+        return FileResponse(
+            path=stored_path,
+            filename=file_info.get("filename", "download.xlsx"),
+            media_type="application/octet-stream"
+        )
+    raise HTTPException(status_code=404, detail="Physical file missing and no database blob available")
 
 
 @app.delete("/api/files/{file_id}")

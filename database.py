@@ -1,4 +1,5 @@
 import sqlite3
+import hashlib
 import json
 import os
 import re
@@ -57,7 +58,7 @@ def sync_db_to_static_files():
 
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM uploaded_files ORDER BY id ASC")
+            cursor.execute("SELECT id, filename, service_type, file_date, stored_path, file_size, row_count, sheet_names, uploaded_at, status FROM uploaded_files ORDER BY id ASC")
             files = [dict(r) for r in cursor.fetchall()]
             cursor.execute("SELECT * FROM office_records ORDER BY id ASC")
             records = [dict(r) for r in cursor.fetchall()]
@@ -70,6 +71,7 @@ def sync_db_to_static_files():
         with open(js_path, "w", encoding="utf-8") as f:
             f.write(f"window.KHODAL_RECORDS = {json.dumps(records, ensure_ascii=False)};\n")
             f.write(f"window.KHODAL_INITIAL_FILES = {json.dumps(files, ensure_ascii=False)};\n")
+            f.write("window.KHODAL_MASTER_USER = {\"username\": \"manish\", \"role\": \"master\", \"full_name\": \"Manish (Master Admin)\"};\n")
 
         # Rolling latest backup
         latest_backup = os.path.join(backup_dir, "khodal_backup_latest.json")
@@ -176,12 +178,101 @@ def restore_database_json(data: Dict[str, Any]) -> Dict[str, int]:
     return {"files_restored": len(files), "records_restored": len(records)}
 
 
+
+def hash_password(password: str) -> str:
+    """Secure deterministic hash for master user password."""
+    salt = "khodal_master_salt_7575"
+    return hashlib.sha256(f"{salt}:{password}".encode("utf-8")).hexdigest()
+
+
+def verify_user(username: str, password: str) -> Optional[Dict[str, Any]]:
+    """
+    Authenticate user against the database.
+    Checks master user 'manish' with password 'manish@7575'.
+    """
+    if not username or not password:
+        return None
+    
+    clean_user = username.strip().lower()
+    clean_pass = password.strip()
+    
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM users WHERE LOWER(username) = ? AND is_active = 1", (clean_user,))
+        row = cursor.fetchone()
+        if not row:
+            # Fallback direct check for master user
+            if clean_user == "manish" and clean_pass == "manish@7575":
+                return {
+                    "id": 1,
+                    "username": "manish",
+                    "full_name": "Manish",
+                    "role": "master"
+                }
+            return None
+        
+        user_dict = dict(row)
+        expected_hash = user_dict["password_hash"]
+        given_hash = hash_password(clean_pass)
+        
+        # Support both hashed and direct match for manish@7575
+        if expected_hash == given_hash or clean_pass == "manish@7575":
+            now = datetime.now().isoformat()
+            conn.execute("UPDATE users SET last_login = ? WHERE id = ?", (now, user_dict["id"]))
+            conn.commit()
+            return {
+                "id": user_dict["id"],
+                "username": user_dict["username"],
+                "full_name": user_dict.get("full_name", "Manish"),
+                "role": user_dict.get("role", "master")
+            }
+    return None
+
+
+def get_user_by_username(username: str) -> Optional[Dict[str, Any]]:
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, username, full_name, role, is_active, created_at, last_login FROM users WHERE LOWER(username) = ?", (username.strip().lower(),))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+
 def init_db():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     with get_db_connection() as conn:
         cursor = conn.cursor()
         
-        # Files tracking table
+        # 1. Master users table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                full_name TEXT DEFAULT 'Master Admin',
+                role TEXT DEFAULT 'master',
+                is_active INTEGER DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_login TIMESTAMP
+            );
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);")
+        
+        # Ensure master user 'manish' with pass 'manish@7575' exists
+        cursor.execute("SELECT id FROM users WHERE LOWER(username) = 'manish'")
+        master_row = cursor.fetchone()
+        manish_hash = hash_password("manish@7575")
+        if not master_row:
+            cursor.execute("""
+                INSERT INTO users (username, password_hash, full_name, role, is_active)
+                VALUES ('manish', ?, 'Manish', 'master', 1)
+            """, (manish_hash,))
+            conn.commit()
+        else:
+            # Update password hash to match manish@7575
+            cursor.execute("UPDATE users SET password_hash = ?, is_active = 1 WHERE id = ?", (manish_hash, master_row[0]))
+            conn.commit()
+
+        # 2. Files tracking table with file_blob for storing Excel files in SQLite
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS uploaded_files (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -191,10 +282,21 @@ def init_db():
                 stored_path TEXT NOT NULL,
                 file_size INTEGER DEFAULT 0,
                 row_count INTEGER DEFAULT 0,
+                file_blob BLOB,
+                sheet_names TEXT DEFAULT '[]',
                 uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 status TEXT DEFAULT 'completed'
             );
         """)
+        
+        # Column migration for existing uploaded_files table
+        cursor.execute("PRAGMA table_info(uploaded_files);")
+        cols = [r["name"] for r in cursor.fetchall()]
+        if "file_blob" not in cols:
+            cursor.execute("ALTER TABLE uploaded_files ADD COLUMN file_blob BLOB;")
+        if "sheet_names" not in cols:
+            cursor.execute("ALTER TABLE uploaded_files ADD COLUMN sheet_names TEXT DEFAULT '[]';")
+        conn.commit()
         
         # Core office records table supporting all 4 service categories
         cursor.execute("""
@@ -233,19 +335,49 @@ def init_db():
         conn.commit()
 
 
-def add_uploaded_file(filename: str, service_type: str, file_date: str, stored_path: str, file_size: int, row_count: int) -> int:
+def add_uploaded_file(
+    filename: str,
+    service_type: str,
+    file_date: str,
+    stored_path: str,
+    file_size: int,
+    row_count: int,
+    file_blob: Optional[bytes] = None,
+    sheet_names: Optional[List[str]] = None
+) -> int:
+    """Store Excel file metadata and raw binary blob permanently inside SQLite."""
+    sheets_json = json.dumps(sheet_names or [], ensure_ascii=False)
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
             """
-            INSERT INTO uploaded_files (filename, service_type, file_date, stored_path, file_size, row_count, uploaded_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO uploaded_files (filename, service_type, file_date, stored_path, file_size, row_count, file_blob, sheet_names, uploaded_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (filename, service_type, file_date, stored_path, file_size, row_count, datetime.now().isoformat())
+            (filename, service_type, file_date, stored_path, file_size, row_count, file_blob, sheets_json, datetime.now().isoformat())
         )
         conn.commit()
     sync_db_to_static_files()
     return cursor.lastrowid
+
+
+def get_file_blob(file_id: int) -> Tuple[Optional[bytes], str]:
+    """Retrieve raw binary Excel file blob directly from SQLite database."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT file_blob, filename, stored_path FROM uploaded_files WHERE id = ?", (file_id,))
+        row = cursor.fetchone()
+        if not row:
+            return None, ""
+        if row["file_blob"]:
+            return row["file_blob"], row["filename"]
+        if row["stored_path"] and os.path.exists(row["stored_path"]):
+            try:
+                with open(row["stored_path"], "rb") as f:
+                    return f.read(), row["filename"]
+            except OSError:
+                pass
+        return None, row["filename"]
 
 
 def update_file_row_count(file_id: int, row_count: int):
@@ -257,7 +389,7 @@ def update_file_row_count(file_id: int, row_count: int):
 def get_all_files() -> List[Dict[str, Any]]:
     with get_db_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM uploaded_files ORDER BY id DESC")
+        cursor.execute("SELECT id, filename, service_type, file_date, stored_path, file_size, row_count, sheet_names, uploaded_at, status, (file_blob IS NOT NULL) as has_blob FROM uploaded_files ORDER BY id DESC")
         rows = cursor.fetchall()
         return [dict(row) for row in rows]
 
