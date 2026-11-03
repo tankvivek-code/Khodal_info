@@ -915,12 +915,57 @@ function copyRecordCard(recordId) {
     });
 }
 
+function updateFormIdLabel(svc) {
+    const label = document.getElementById("form-id-label");
+    const input = document.getElementById("form-id-number");
+    if (!label || !input) return;
+
+    if (svc === "ucaadhar") {
+        label.textContent = "SID Number (UC Aadhaar) *";
+        input.placeholder = "e.g. S148796318971020261001104627";
+    } else if (svc === "aadhar_online") {
+        label.textContent = "SRN Number (Aadhaar Online) *";
+        input.placeholder = "e.g. S1311143561680";
+    } else if (svc === "pancard") {
+        label.textContent = "PAN / Acknowledgement No";
+        input.placeholder = "e.g. ABCDE1234F / Ack No";
+    } else if (svc === "aayushman") {
+        label.textContent = "Ration / Ayushman Card No";
+        input.placeholder = "e.g. PAJYXBXFU... / 109904008663704";
+    } else {
+        label.textContent = "SID / SRN / Card No";
+        input.placeholder = "e.g. S131114... / PAJY...";
+    }
+}
+
+function handleFormIdInput(val) {
+    const clean = (val || "").trim().toUpperCase();
+    const svcSelect = document.getElementById("form-service-type");
+    if (!svcSelect) return;
+
+    // SID Number ALWAYS means UC Aadhaar
+    // SRN Number ALWAYS means Aadhaar Online
+    if (clean.startsWith("SID") || (clean.startsWith("S") && clean.length >= 18)) {
+        if (svcSelect.value !== "ucaadhar") {
+            svcSelect.value = "ucaadhar";
+            updateFormIdLabel("ucaadhar");
+        }
+    } else if (clean.startsWith("SRN") || (clean.startsWith("S") && clean.length >= 10 && clean.length <= 16)) {
+        if (svcSelect.value !== "aadhar_online") {
+            svcSelect.value = "aadhar_online";
+            updateFormIdLabel("aadhar_online");
+        }
+    }
+}
+
 function openAddRecordModal() {
     document.getElementById("record-form-title").textContent = "New Office Entry";
     document.getElementById("form-record-id").value = "";
     document.getElementById("record-form").reset();
     document.getElementById("form-date").value = currentDateFilter || new Date().toISOString().split("T")[0];
-    document.getElementById("form-service-type").value = currentServiceTab !== "all" ? currentServiceTab : "ucaadhar";
+    const initialSvc = currentServiceTab !== "all" ? currentServiceTab : "ucaadhar";
+    document.getElementById("form-service-type").value = initialSvc;
+    updateFormIdLabel(initialSvc);
     openModal("modal-record-form");
 }
 
@@ -930,7 +975,9 @@ function openEditRecordModal(recordId) {
 
     document.getElementById("record-form-title").textContent = "Edit Office Entry";
     document.getElementById("form-record-id").value = r.id;
-    document.getElementById("form-service-type").value = r.service_type || "ucaadhar";
+    const recSvc = r.service_type || "ucaadhar";
+    document.getElementById("form-service-type").value = recSvc;
+    updateFormIdLabel(recSvc);
     document.getElementById("form-date").value = r.record_date || "";
     document.getElementById("form-name").value = r.name || "";
     document.getElementById("form-mobile").value = r.mobile || "";
@@ -1199,8 +1246,8 @@ async function submitFileUpload() {
 
                     const idxDate = findCol("date");
                     const idxName = findCol("name", "client name", "party");
-                    const idxSid = findCol("sid number", "sid");
-                    const idxSrn = findCol("srn no", "srn number", "srn");
+                    const idxSid = findCol("sid number", "sid num", "sid no", "sid");
+                    const idxSrn = findCol("srn no", "srn number", "srn num", "srn");
                     const idxRation = findCol("ration card no", "ration", "aayushman", "ayushman");
                     const idxPan = findCol("pan change", "pan new", "pan");
                     const idxMobile = findCol("mo", "mobile", "mobile number", "contact");
@@ -1208,6 +1255,12 @@ async function submitFileUpload() {
                     const idxTotal = findCol("total", "total amt", "amount");
                     const idxFee = findCol("fee");
                     const idxRemark = findCol("remark", "remarks", "others", "note");
+
+                    // SID column means UC Aadhaar, SRN column means Aadhaar Online
+                    if (!svcType || svcType === "auto") {
+                        if (idxSid !== -1 && idxSrn === -1) sheetSvc = "ucaadhar";
+                        else if (idxSrn !== -1 && idxSid === -1) sheetSvc = "aadhar_online";
+                    }
 
                     let sheetRowCount = 0;
 
@@ -1311,10 +1364,26 @@ async function submitFileUpload() {
                             const normMob = rawMob.replace(/\D/g, "").slice(-10);
                             const isBaki = (remark.toLowerCase().includes("baki") || remark.toLowerCase().includes("not reciv") || remark.toLowerCase().includes("no reciv") || remark.toLowerCase().includes("not resiv")) ? 1 : 0;
 
+                            // SID number always means UC Aadhaar
+                            // SRN number always means Aadhaar Online
+                            let rowSvc = sheetSvc;
+                            const cleanId = (idNum || "").trim().toUpperCase();
+                            if (!svcType || svcType === "auto") {
+                                if (cleanId.startsWith("SID") || (cleanId.startsWith("S") && cleanId.length >= 18)) {
+                                    rowSvc = "ucaadhar";
+                                } else if (cleanId.startsWith("SRN") || (cleanId.startsWith("S") && cleanId.length >= 10 && cleanId.length <= 16)) {
+                                    rowSvc = "aadhar_online";
+                                } else if (idxSid !== -1 && rowStr[idxSid]) {
+                                    rowSvc = "ucaadhar";
+                                } else if (idxSrn !== -1 && rowStr[idxSrn]) {
+                                    rowSvc = "aadhar_online";
+                                }
+                            }
+
                             staticRecords.unshift({
                                 id: nextId,
                                 file_id: newFileId,
-                                service_type: sheetSvc,
+                                service_type: rowSvc,
                                 record_date: recDate,
                                 name: name,
                                 mobile: rawMob,

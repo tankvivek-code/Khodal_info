@@ -126,8 +126,8 @@ def parse_single_sheet_df(
 
     idx_date = find_col_idx("date")
     idx_name = find_col_idx("name", "client name", "party")
-    idx_sid = find_col_idx("sid number", "sid")
-    idx_srn = find_col_idx("srn no", "srn number", "srn")
+    idx_sid = find_col_idx("sid number", "sid num", "sid no", "sid")
+    idx_srn = find_col_idx("srn no", "srn number", "srn num", "srn")
     idx_ration = find_col_idx("ration card no", "ration", "aayushman", "ayushman")
     idx_pan = find_col_idx("pan change", "pan new", "pan")
     idx_mobile = find_col_idx("mo", "mobile", "mobile number", "contact")
@@ -135,6 +135,18 @@ def parse_single_sheet_df(
     idx_total = find_col_idx("total", "total amt", "amount")
     idx_fee = find_col_idx("fee")
     idx_remark = find_col_idx("remark", "remarks", "others", "note")
+
+    # If SID column is present, this sheet is definitively UC Aadhaar
+    # If SRN column is present, this sheet is definitively Aadhaar Online
+    if not forced_service or forced_service == "auto":
+        if idx_sid != -1 and idx_srn == -1:
+            service_type = "ucaadhar"
+        elif idx_srn != -1 and idx_sid == -1:
+            service_type = "aadhar_online"
+        elif idx_pan != -1 and idx_sid == -1 and idx_srn == -1:
+            service_type = "pancard"
+        elif idx_ration != -1 and idx_sid == -1 and idx_srn == -1:
+            service_type = "aayushman"
 
     for _, row in df.iterrows():
         row_vals = [str(val).strip() if pd.notna(val) and val is not None and str(val).lower() != "nan" else "" for val in row.values]
@@ -245,6 +257,21 @@ def parse_single_sheet_df(
             elif idx_srn != -1: id_num = row_vals[idx_srn]
             elif idx_ration != -1: id_num = row_vals[idx_ration]
 
+        # Determine service for this specific record:
+        # SID Number ALWAYS means UC Aadhaar
+        # SRN Number ALWAYS means Aadhaar Online
+        row_svc = service_type
+        clean_id = id_num.strip().upper()
+        if not forced_service or forced_service == "auto":
+            if clean_id.startswith("SID") or (clean_id.startswith("S") and len(clean_id) >= 18):
+                row_svc = "ucaadhar"
+            elif clean_id.startswith("SRN") or (clean_id.startswith("S") and 10 <= len(clean_id) <= 16):
+                row_svc = "aadhar_online"
+            elif idx_sid != -1 and idx_sid < len(row_vals) and row_vals[idx_sid]:
+                row_svc = "ucaadhar"
+            elif idx_srn != -1 and idx_srn < len(row_vals) and row_vals[idx_srn]:
+                row_svc = "aadhar_online"
+
         # Check if record has at least Name or ID number or Mobile
         if name or id_num or raw_mob:
             display_mob, norm_mob = clean_phone(raw_mob)
@@ -252,7 +279,7 @@ def parse_single_sheet_df(
             
             records.append({
                 "file_id": file_id,
-                "service_type": service_type,
+                "service_type": row_svc,
                 "record_date": rec_date,
                 "name": name,
                 "mobile": display_mob,
