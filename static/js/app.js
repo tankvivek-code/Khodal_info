@@ -26,13 +26,58 @@ const SERVICE_META = {
 // =========================================================================
 // DATE FORMATTERS (Strict DD-MM-YYYY User Display)
 // =========================================================================
+const MONTH_NAMES_MAP = {
+    jan: "01", january: "01",
+    feb: "02", february: "02",
+    mar: "03", march: "03",
+    apr: "04", april: "04",
+    may: "05",
+    jun: "06", june: "06",
+    jul: "07", july: "07",
+    aug: "08", august: "08",
+    sep: "09", sept: "09", september: "09",
+    oct: "10", october: "10",
+    nov: "11", november: "11",
+    dec: "12", december: "12"
+};
+
 function formatDateDisplay(val) {
     if (!val) return "-";
-    const s = String(val).trim();
-    if (!s || s === "-") return "-";
 
-    // Match YYYY-MM-DD or YYYY/MM/DD
-    const mIso = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+    // 1. JS Date object
+    if (val instanceof Date && !isNaN(val)) {
+        const day = String(val.getDate()).padStart(2, '0');
+        const month = String(val.getMonth() + 1).padStart(2, '0');
+        const year = val.getFullYear();
+        return `${day}-${month}-${year}`;
+    }
+
+    // 2. Numeric Excel serial date (e.g. 46328)
+    if (typeof val === "number" && val >= 30000 && val <= 65000) {
+        const d = new Date(Math.round((val - 25569) * 86400 * 1000));
+        const day = String(d.getUTCDate()).padStart(2, '0');
+        const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+        const year = d.getUTCFullYear();
+        return `${day}-${month}-${year}`;
+    }
+
+    const s = String(val).trim();
+    if (!s || s === "-" || s.toLowerCase() === "nan") return "-";
+
+    // 3. String numeric Excel serial (e.g. "46328")
+    if (/^\d{5}(\.\d+)?$/.test(s)) {
+        const num = parseFloat(s);
+        if (num >= 30000 && num <= 65000) {
+            const d = new Date(Math.round((num - 25569) * 86400 * 1000));
+            const day = String(d.getUTCDate()).padStart(2, '0');
+            const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+            const year = d.getUTCFullYear();
+            return `${day}-${month}-${year}`;
+        }
+    }
+
+    // 4. Match ISO YYYY-MM-DD or YYYY/MM/DD
+    const mIso = s.match(/(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
     if (mIso) {
         const day = String(mIso[3]).padStart(2, '0');
         const month = String(mIso[2]).padStart(2, '0');
@@ -40,12 +85,24 @@ function formatDateDisplay(val) {
         return `${day}-${month}-${year}`;
     }
 
-    // Match DD-MM-YYYY or DD/MM/YYYY
-    const mDm = s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
+    // 5. Match DD-MM-YYYY or DD/MM/YYYY or D-M-YYYY
+    const mDm = s.match(/(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})/);
     if (mDm) {
         const day = String(mDm[1]).padStart(2, '0');
         const month = String(mDm[2]).padStart(2, '0');
-        const year = mDm[3];
+        let year = mDm[3];
+        if (year.length === 2) year = "20" + year;
+        return `${day}-${month}-${year}`;
+    }
+
+    // 6. Match DD-MonthName-YYYY (e.g. 15-Oct-2026 or 15 October 2026)
+    const mNamed = s.match(/^(\d{1,2})[-/\s]+([a-zA-Z]+)[-/\s]+(\d{2,4})/);
+    if (mNamed) {
+        const day = String(mNamed[1]).padStart(2, '0');
+        const monthKey = mNamed[2].toLowerCase();
+        const month = MONTH_NAMES_MAP[monthKey] || "01";
+        let year = mNamed[3];
+        if (year.length === 2) year = "20" + year;
         return `${day}-${month}-${year}`;
     }
 
@@ -2024,6 +2081,7 @@ async function openFilesModal() {
                         <span class="font-semibold text-slate-700">${rowCount.toLocaleString()} rows</span>
                         <span>•</span>
                         <span>${sizeKb} KB</span>
+                        ${f.uploaded_at || f.file_date ? `<span>•</span><span class="font-mono">📅 ${formatDateDisplay(f.uploaded_at || f.file_date)}</span>` : ""}
                     </div>
                 </div>
             </div>
