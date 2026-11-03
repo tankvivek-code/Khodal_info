@@ -85,6 +85,12 @@
                         <span class="hidden sm:inline">Files</span>
                     </button>
 
+                    <!-- Excel Template Button -->
+                    <a href="/api/templates/master" download="Khodal_Office_Master_Template.xlsx" class="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg transition border border-blue-200 shadow-2xs" title="Download Official Master Excel Format">
+                        <i data-lucide="file-spreadsheet" class="w-4 h-4 text-blue-600"></i>
+                        <span class="hidden sm:inline">Excel Template</span>
+                    </a>
+
                     <!-- Add Record Button -->
                     <button onclick="openAddRecordModal()" class="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg shadow-2xs hover:shadow transition">
                         <i data-lucide="plus-circle" class="w-4 h-4 text-brand-600"></i>
@@ -170,18 +176,40 @@
                     </div>
                 </div>
 
-                <!-- Date Picker & Quick Date Selector -->
-                <div class="flex items-center gap-2">
+                <!-- Date Input, Quick Selector & Fast Date Actions -->
+                <div class="flex flex-wrap items-center gap-2">
+                    <!-- Write / Pick Custom Date Input -->
+                    <div class="relative flex items-center">
+                        <span class="text-xs font-bold text-slate-600 mr-1.5 hidden sm:inline">Date:</span>
+                        <input type="date" id="showcase-date-input" onchange="onCustomDateFilterChange(this.value)"
+                            class="text-xs font-semibold bg-slate-50 hover:bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-slate-800 outline-hidden focus:ring-2 focus:ring-brand-500 cursor-pointer shadow-2xs"
+                            title="Write or pick any appropriate date to showcase">
+                    </div>
+
+                    <!-- Available Dates Dropdown -->
                     <div class="relative">
-                        <select id="quick-date-selector" onchange="onDateSelectorChange(this.value)" class="text-xs font-semibold bg-slate-50 hover:bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-700 outline-hidden focus:ring-2 focus:ring-brand-500">
+                        <select id="quick-date-selector" onchange="onDateSelectorChange(this.value)"
+                            class="text-xs font-semibold bg-slate-50 hover:bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-slate-700 outline-hidden focus:ring-2 focus:ring-brand-500 max-w-[175px]"
+                            title="Quick select from available record dates">
                             <option value="">All Dates (Overview)</option>
                         </select>
                     </div>
-                    <button onclick="setTodayDate()" class="px-2.5 py-2 text-xs font-semibold bg-brand-50 text-brand-700 hover:bg-brand-100 border border-brand-200 rounded-lg transition">
+
+                    <!-- Jump to Latest Date in Work Records -->
+                    <button onclick="selectLatestDate()" class="px-2.5 py-1.5 text-xs font-semibold bg-brand-50 text-brand-700 hover:bg-brand-100 border border-brand-200 rounded-lg transition inline-flex items-center gap-1 shadow-2xs" title="Show latest record date from your uploaded data">
+                        <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+                        <span>Latest Date</span>
+                    </button>
+
+                    <!-- Today's Date -->
+                    <button onclick="setTodayDate()" class="px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 border border-slate-200 rounded-lg transition" title="Filter by today's date">
                         Today
                     </button>
-                    <button onclick="resetDateFilter()" class="px-2.5 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 border border-slate-200 rounded-lg transition" title="View all dates">
+
+                    <!-- All Dates (Reset) -->
+                    <button onclick="resetDateFilter()" class="px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 border border-slate-200 rounded-lg transition inline-flex items-center gap-1" title="View all records (all dates)">
                         <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
+                        <span class="hidden sm:inline">All</span>
                     </button>
                 </div>
             </div>
@@ -262,7 +290,24 @@
             </div>
 
             <!-- Search Inputs Row -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                <!-- Search by Date -->
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1">Search / Filter by Date</label>
+                    <div class="relative">
+                        <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                            <i data-lucide="calendar" class="w-4 h-4"></i>
+                        </span>
+                        <input type="date" id="search-date"
+                            class="w-full pl-9 pr-8 py-2 text-xs sm:text-sm bg-slate-50 focus:bg-white border border-slate-200 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 rounded-lg transition outline-hidden cursor-pointer"
+                            onchange="onSearchDateChange(this.value)"
+                            title="Filter records by date">
+                        <button id="clear-search-date" onclick="clearSearchDate()" class="hidden absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 hover:text-slate-600">
+                            <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                        </button>
+                    </div>
+                </div>
+
                 <!-- Search by Name -->
                 <div>
                     <label class="block text-xs font-bold text-slate-700 mb-1">Search by Name</label>
@@ -351,6 +396,18 @@
                         <option value="100">100</option>
                     </select>
                 </div>
+            </div>
+
+            <!-- Active Date / Filter Hint Banner -->
+            <div id="table-filter-hint" class="hidden px-5 py-2.5 bg-brand-50/80 border-b border-brand-100 text-xs font-semibold text-brand-900 flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="calendar" class="w-4 h-4 text-brand-600"></i>
+                    <span>Filtering by Date: <strong id="active-date-display" class="font-bold text-brand-950 font-mono"></strong></span>
+                    <span id="cross-date-match-hint" class="ml-2 text-brand-700 font-normal"></span>
+                </div>
+                <button onclick="resetDateFilter()" class="underline text-brand-700 hover:text-brand-900 font-bold text-xs inline-flex items-center gap-1">
+                    <i data-lucide="rotate-ccw" class="w-3 h-3"></i> Show All Dates
+                </button>
             </div>
 
             <!-- Table Dynamic Content -->
@@ -453,6 +510,34 @@
                         <option value="pancard">💳 PAN Card (New / Update PAN)</option>
                         <option value="aayushman">🏥 Ayushman Card (Ration Card No)</option>
                     </select>
+                </div>
+
+                <!-- Download Official Excel Templates Section -->
+                <div class="p-3 bg-blue-50/80 border border-blue-200 rounded-xl space-y-2">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-bold text-blue-950 flex items-center gap-1.5">
+                            <i data-lucide="file-spreadsheet" class="w-4 h-4 text-blue-600"></i>
+                            Download Standard Excel Formats:
+                        </span>
+                        <a href="/api/templates/master" download="Khodal_Office_Master_Template.xlsx" class="text-[11px] font-bold text-white bg-blue-600 hover:bg-blue-700 px-2.5 py-1 rounded-md transition shadow-2xs flex items-center gap-1">
+                            <i data-lucide="download" class="w-3 h-3"></i>
+                            Master (All 4 Services)
+                        </a>
+                    </div>
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-[11px]">
+                        <a href="/api/templates/ucaadhar" download="Template_1_UC_Aadhaar.xlsx" class="text-center py-1.5 px-1 bg-white hover:bg-blue-100 text-blue-800 border border-blue-200 rounded-lg transition font-medium">
+                            🪪 UC Aadhaar
+                        </a>
+                        <a href="/api/templates/aadhar_online" download="Template_2_Aadhaar_Online.xlsx" class="text-center py-1.5 px-1 bg-white hover:bg-blue-100 text-blue-800 border border-blue-200 rounded-lg transition font-medium">
+                            🌐 Aadhaar Online
+                        </a>
+                        <a href="/api/templates/pancard" download="Template_3_PAN_Card.xlsx" class="text-center py-1.5 px-1 bg-white hover:bg-blue-100 text-blue-800 border border-blue-200 rounded-lg transition font-medium">
+                            💳 PAN Card
+                        </a>
+                        <a href="/api/templates/aayushman" download="Template_4_Ayushman_Card.xlsx" class="text-center py-1.5 px-1 bg-white hover:bg-blue-100 text-blue-800 border border-blue-200 rounded-lg transition font-medium">
+                            🏥 Ayushman
+                        </a>
+                    </div>
                 </div>
 
                 <!-- Dropzone Area -->
@@ -713,6 +798,6 @@
     <!-- Preloaded Database Records for GitHub Pages & Static Mode -->
     <script src="data/records.js?v=20261103L"></script>
     <!-- Frontend Script -->
-    <script src="static/js/app.js?v=20261103L"></script>
+    <script src="static/js/app.js?v=20261103N"></script>
 </body>
 </html>

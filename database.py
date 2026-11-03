@@ -538,7 +538,7 @@ def get_daily_progress_stats(date_str: Optional[str] = None, service_type: Optio
         total_fee = fee_sum_row[0] if fee_sum_row and fee_sum_row[0] else 0.0
 
         # Available dates list (for date picker / filter quick selection)
-        cursor.execute("SELECT DISTINCT record_date FROM office_records WHERE record_date != '' ORDER BY record_date DESC LIMIT 30")
+        cursor.execute("SELECT DISTINCT record_date FROM office_records WHERE record_date != '' ORDER BY record_date DESC")
         available_dates = [r[0] for r in cursor.fetchall()]
 
         # Service-wise distribution

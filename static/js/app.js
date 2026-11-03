@@ -315,7 +315,8 @@ async function loadDailyProgress() {
 
 function populateDateSelector(availableDates) {
     const select = document.getElementById("quick-date-selector");
-    const currentVal = select.value;
+    if (!select) return;
+    const currentVal = currentDateFilter || select.value;
     select.innerHTML = '<option value="">All Dates (Overview)</option>';
 
     availableDates.forEach(d => {
@@ -327,16 +328,25 @@ function populateDateSelector(availableDates) {
 
     if (currentVal && availableDates.includes(currentVal)) {
         select.value = currentVal;
+    } else {
+        select.value = "";
+    }
+
+    const showcaseInput = document.getElementById("showcase-date-input");
+    if (showcaseInput && currentVal) {
+        showcaseInput.value = currentVal;
     }
 }
 
 function getSearchParams() {
+    const searchDateEl = document.getElementById("search-date");
+    const activeDate = currentDateFilter || (searchDateEl ? searchDateEl.value.trim() : "");
     return {
         service_type: currentServiceTab,
         name: document.getElementById("search-name").value.trim(),
         mobile: document.getElementById("search-mobile").value.trim(),
         id_number: document.getElementById("search-id").value.trim(),
-        date: currentDateFilter,
+        date: activeDate,
         status: currentStatusFilter !== "all" ? currentStatusFilter : (document.getElementById("filter-status").value !== "all" ? document.getElementById("filter-status").value : null),
         baki_only: isBakiOnly,
         page: currentPage,
@@ -366,7 +376,7 @@ async function fetchRecords(page = 1) {
         }
         if (params.name) {
             const q = params.name.toLowerCase();
-            filtered = filtered.filter(r => (r.name || "").toLowerCase().includes(q));
+            filtered = filtered.filter(r => (r.name || "").toLowerCase().includes(q) || (r.record_date || "").includes(q) || formatDateDisplay(r.record_date).toLowerCase().includes(q));
         }
         if (params.mobile) {
             const mobClean = params.mobile.replace(/\D/g, "");
@@ -374,13 +384,44 @@ async function fetchRecords(page = 1) {
         }
         if (params.id_number) {
             const q = params.id_number.toLowerCase();
-            filtered = filtered.filter(r => (r.id_number || "").toLowerCase().includes(q));
+            filtered = filtered.filter(r => (r.id_number || "").toLowerCase().includes(q) || (r.record_date || "").includes(q) || formatDateDisplay(r.record_date).toLowerCase().includes(q));
         }
         if (params.status && params.status !== "all") {
             filtered = filtered.filter(r => (r.status || "").toLowerCase() === params.status.toLowerCase());
         }
         if (params.baki_only) {
             filtered = filtered.filter(r => r.is_baki === 1 || (r.remark || "").toUpperCase().includes("BAKI"));
+        }
+
+        // Cross-date matching feedback hint
+        const hintCross = document.getElementById("cross-date-match-hint");
+        if (filtered.length === 0 && params.date && (params.name || params.mobile || params.id_number)) {
+            const globalMatches = staticRecords.filter(r => {
+                let ok = true;
+                if (params.service_type && params.service_type !== "all") {
+                    ok = ok && (r.service_type || "").toLowerCase() === params.service_type.toLowerCase();
+                }
+                if (params.name) {
+                    const q = params.name.toLowerCase();
+                    ok = ok && ((r.name || "").toLowerCase().includes(q) || (r.record_date || "").includes(q) || formatDateDisplay(r.record_date).toLowerCase().includes(q));
+                }
+                if (params.mobile) {
+                    const mobClean = params.mobile.replace(/\D/g, "");
+                    ok = ok && ((r.mobile || "").includes(params.mobile) || (r.normalized_mobile || "").includes(mobClean));
+                }
+                if (params.id_number) {
+                    const q = params.id_number.toLowerCase();
+                    ok = ok && ((r.id_number || "").toLowerCase().includes(q) || (r.record_date || "").includes(q) || formatDateDisplay(r.record_date).toLowerCase().includes(q));
+                }
+                return ok;
+            });
+            if (globalMatches.length > 0 && hintCross) {
+                hintCross.innerHTML = `<span class="bg-amber-100 text-amber-900 px-2 py-0.5 rounded text-[11px] font-semibold ml-2">⚠️ Found ${globalMatches.length} matching record(s) on other dates. <button onclick="resetDateFilter()" class="underline font-bold text-brand-700 ml-1">Search All Dates</button></span>`;
+            } else if (hintCross) {
+                hintCross.innerHTML = "";
+            }
+        } else if (hintCross) {
+            hintCross.innerHTML = "";
         }
 
         totalRecords = filtered.length;
@@ -400,6 +441,22 @@ async function fetchRecords(page = 1) {
         document.getElementById("badge-total-records").textContent = `${totalRecords.toLocaleString()} records`;
         const activeTitle = SERVICE_META[currentServiceTab] ? SERVICE_META[currentServiceTab].label : "All Services";
         document.getElementById("active-service-title").textContent = `${activeTitle} Records`;
+
+        // Update empty state button
+        const emptyBtn = document.getElementById("empty-state-btn");
+        if (params.date && (params.name || params.mobile || params.id_number) && filtered.length === 0) {
+            document.getElementById("empty-state-desc").textContent = `No records matching search on date ${formatDateDisplay(params.date)}. Try searching across all dates.`;
+            if (emptyBtn) {
+                emptyBtn.textContent = "Search Across All Dates";
+                emptyBtn.setAttribute("onclick", "resetDateFilter()");
+            }
+        } else {
+            document.getElementById("empty-state-desc").textContent = 'Try clearing search terms or selecting "All Dates".';
+            if (emptyBtn) {
+                emptyBtn.textContent = "Reset Filters";
+                emptyBtn.setAttribute("onclick", "resetAllFilters()");
+            }
+        }
 
         if (spinner) spinner.classList.add("hidden");
         return;
@@ -779,25 +836,97 @@ function switchServiceTab(tab) {
     fetchRecords(1);
 }
 
-function onDateSelectorChange(val) {
-    currentDateFilter = val;
+function getAvailableDates() {
+    if (isStaticMode) {
+        const set = new Set();
+        staticRecords.forEach(r => {
+            if (r.record_date && r.record_date.length >= 10) set.add(r.record_date.substring(0, 10));
+        });
+        return Array.from(set).sort().reverse();
+    }
+    const select = document.getElementById("quick-date-selector");
+    if (select) {
+        return Array.from(select.options).map(o => o.value).filter(Boolean);
+    }
+    return [];
+}
+
+function getLatestRecordDate() {
+    const dates = getAvailableDates();
+    return dates.length > 0 ? dates[0] : "";
+}
+
+function applyDateFilter(val) {
+    currentDateFilter = normalizeDateToIso(val) || "";
+
+    const showcaseInput = document.getElementById("showcase-date-input");
+    if (showcaseInput) showcaseInput.value = currentDateFilter;
+
+    const selector = document.getElementById("quick-date-selector");
+    if (selector) selector.value = currentDateFilter;
+
+    const searchDateInput = document.getElementById("search-date");
+    if (searchDateInput) {
+        searchDateInput.value = currentDateFilter;
+        toggleClearButton("search-date", "clear-search-date");
+    }
+
+    updateDateFilterHint();
     loadDailyProgress();
     fetchRecords(1);
+}
+
+function onCustomDateFilterChange(val) {
+    applyDateFilter(val);
+}
+
+function onDateSelectorChange(val) {
+    applyDateFilter(val);
+}
+
+function onSearchDateChange(val) {
+    applyDateFilter(val);
+}
+
+function clearSearchDate() {
+    applyDateFilter("");
+}
+
+function selectLatestDate() {
+    const latest = getLatestRecordDate();
+    if (!latest) {
+        showToast("No record dates found in the data", "info");
+        return;
+    }
+    applyDateFilter(latest);
+    showToast(`Showing latest work date: ${formatDateDisplay(latest)}`, "success");
 }
 
 function setTodayDate() {
     const today = new Date().toISOString().split("T")[0];
-    currentDateFilter = today;
-    document.getElementById("quick-date-selector").value = today;
-    loadDailyProgress();
-    fetchRecords(1);
+    applyDateFilter(today);
+    setTimeout(() => {
+        if (totalRecords === 0) {
+            showToast(`No records for today (${formatDateDisplay(today)}). Click 'Latest Date' to view uploaded data.`, "info");
+        }
+    }, 350);
 }
 
 function resetDateFilter() {
-    currentDateFilter = "";
-    document.getElementById("quick-date-selector").value = "";
-    loadDailyProgress();
-    fetchRecords(1);
+    applyDateFilter("");
+    showToast("Showing all dates", "info");
+}
+
+function updateDateFilterHint() {
+    const hintEl = document.getElementById("table-filter-hint");
+    const displayEl = document.getElementById("active-date-display");
+    if (!hintEl) return;
+    if (currentDateFilter) {
+        hintEl.classList.remove("hidden");
+        if (displayEl) displayEl.textContent = formatDateDisplay(currentDateFilter);
+    } else {
+        hintEl.classList.add("hidden");
+    }
 }
 
 function filterByStatusQuick(status) {
@@ -853,23 +982,37 @@ function resetAllFilters() {
     document.getElementById("search-name").value = "";
     document.getElementById("search-mobile").value = "";
     document.getElementById("search-id").value = "";
+    const searchDateEl = document.getElementById("search-date");
+    if (searchDateEl) searchDateEl.value = "";
+    
     document.getElementById("filter-status").value = "all";
     currentStatusFilter = "all";
     isBakiOnly = false;
     currentDateFilter = "";
-    document.getElementById("quick-date-selector").value = "";
+    
+    const showcaseInput = document.getElementById("showcase-date-input");
+    if (showcaseInput) showcaseInput.value = "";
+    const selector = document.getElementById("quick-date-selector");
+    if (selector) selector.value = "";
 
     const badge = document.getElementById("baki-active-badge");
-    badge.textContent = "pending";
-    badge.classList.remove("bg-rose-600", "text-white");
+    if (badge) {
+        badge.textContent = "pending";
+        badge.classList.remove("bg-rose-600", "text-white");
+    }
 
     toggleClearButton("search-name", "clear-name");
     toggleClearButton("search-mobile", "clear-mobile");
     toggleClearButton("search-id", "clear-id");
+    toggleClearButton("search-date", "clear-search-date");
+
+    updateDateFilterHint();
+    const hintCross = document.getElementById("cross-date-match-hint");
+    if (hintCross) hintCross.innerHTML = "";
 
     loadDailyProgress();
     fetchRecords(1);
-    showToast("Filters reset", "info");
+    showToast("Filters reset to view all records", "info");
 }
 
 // =========================================================================
@@ -1014,6 +1157,15 @@ function handleFormIdInput(val) {
             svcSelect.value = "ucaadhar";
             updateFormIdLabel("ucaadhar");
         }
+        // Auto-extract date from SID timestamp: S...YYYYMMDD...
+        const mDate = clean.match(/S\d{10,14}(202[0-9])(0[1-9]|1[0-2])([0-3][0-9])/);
+        if (mDate) {
+            const sidDate = `${mDate[1]}-${mDate[2]}-${mDate[3]}`;
+            const dateInput = document.getElementById("form-date");
+            if (dateInput) {
+                dateInput.value = sidDate;
+            }
+        }
     } else if (clean.startsWith("SRN") || (clean.startsWith("S") && clean.length >= 10 && clean.length <= 16)) {
         if (svcSelect.value !== "aadhar_online") {
             svcSelect.value = "aadhar_online";
@@ -1026,7 +1178,11 @@ function openAddRecordModal() {
     document.getElementById("record-form-title").textContent = "New Office Entry";
     document.getElementById("form-record-id").value = "";
     document.getElementById("record-form").reset();
-    document.getElementById("form-date").value = normalizeDateToIso(currentDateFilter) || new Date().toISOString().split("T")[0];
+    
+    // Default to active date filter, or latest date from records, or today
+    const defaultDate = normalizeDateToIso(currentDateFilter) || getLatestRecordDate() || new Date().toISOString().split("T")[0];
+    document.getElementById("form-date").value = defaultDate;
+    
     const initialSvc = currentServiceTab !== "all" ? currentServiceTab : "ucaadhar";
     document.getElementById("form-service-type").value = initialSvc;
     updateFormIdLabel(initialSvc);
@@ -1290,12 +1446,44 @@ async function submitFileUpload() {
 
                 const parseDateStr = (val) => {
                     if (!val) return "";
-                    const s = String(val).trim();
-                    const mIso = s.match(/(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
-                    if (mIso) {
-                        return `${mIso[1]}-${String(mIso[2]).padStart(2, '0')}-${String(mIso[3]).padStart(2, '0')}`;
+                    // Numeric Excel serial date (e.g. 46328)
+                    if (typeof val === "number" && val >= 30000 && val <= 65000) {
+                        const d = new Date(Math.round((val - 25569) * 86400 * 1000));
+                        const y = d.getUTCFullYear();
+                        const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+                        const day = String(d.getUTCDate()).padStart(2, '0');
+                        return `${y}-${m}-${day}`;
                     }
-                    const mDm = s.match(/(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})/);
+                    if (val instanceof Date && !isNaN(val)) {
+                        const y = val.getFullYear();
+                        const m = String(val.getMonth() + 1).padStart(2, '0');
+                        const day = String(val.getDate()).padStart(2, '0');
+                        return `${y}-${m}-${day}`;
+                    }
+                    const s = String(val).trim();
+                    if (/^\d{5}(\.\d+)?$/.test(s)) {
+                        const num = parseFloat(s);
+                        if (num >= 30000 && num <= 65000) {
+                            const d = new Date(Math.round((num - 25569) * 86400 * 1000));
+                            const y = d.getUTCFullYear();
+                            const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+                            const day = String(d.getUTCDate()).padStart(2, '0');
+                            return `${y}-${m}-${day}`;
+                        }
+                    }
+                    // Match YYYY-MM-DD or YYYY-DD-MM (Excel US-locale export flip)
+                    const mIso = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+                    if (mIso) {
+                        const y = mIso[1];
+                        const p1 = parseInt(mIso[2], 10);
+                        const p2 = parseInt(mIso[3], 10);
+                        if (p1 >= 1 && p1 <= 31 && p2 === 10) {
+                            return `${y}-10-${String(p1).padStart(2, '0')}`;
+                        }
+                        return `${y}-${String(p1).padStart(2, '0')}-${String(p2).padStart(2, '0')}`;
+                    }
+                    // Match DD-MM-YYYY or DD/MM/YYYY or D-M-YYYY
+                    const mDm = s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})/);
                     if (mDm) {
                         let yr = mDm[3];
                         if (yr.length === 2) yr = "20" + yr;
@@ -1337,7 +1525,30 @@ async function submitFileUpload() {
                     if (!rawRows || rawRows.length === 0) return;
 
                     const sheetDateCandidate = parseDateStr(sheetName);
-                    let currentSheetDate = sheetDateCandidate || new Date().toISOString().split("T")[0];
+                    let currentSheetDate = sheetDateCandidate || "";
+                    if (!currentSheetDate) {
+                        for (let scanIdx = 0; scanIdx < Math.min(rawRows.length, 60); scanIdx++) {
+                            const scanRow = rawRows[scanIdx] || [];
+                            for (const cellVal of scanRow) {
+                                if (!cellVal) continue;
+                                const cellStr = String(cellVal).trim();
+                                const mSidDate = cellStr.match(/S\d{10,14}(202[0-9])(0[1-9]|1[0-2])([0-3][0-9])/);
+                                if (mSidDate) {
+                                    currentSheetDate = `${mSidDate[1]}-${mSidDate[2]}-${mSidDate[3]}`;
+                                    break;
+                                }
+                                const pScan = parseDateStr(cellVal);
+                                if (pScan && cellStr.length <= 15) {
+                                    currentSheetDate = pScan;
+                                    break;
+                                }
+                            }
+                            if (currentSheetDate) break;
+                        }
+                    }
+                    if (!currentSheetDate) {
+                        currentSheetDate = new Date().toISOString().split("T")[0];
+                    }
 
                     let headers = [];
                     let idxDate = -1;
@@ -1711,8 +1922,15 @@ async function submitFileUpload() {
                 selectedUploadFile = null;
                 document.getElementById("file-input").value = "";
                 document.getElementById("selected-file-name").classList.add("hidden");
-                await loadDailyProgress();
-                await fetchRecords(1);
+                
+                // Immediately select the latest date from the imported records in the showcase!
+                const latestImportedDate = getLatestRecordDate();
+                if (latestImportedDate) {
+                    applyDateFilter(latestImportedDate);
+                } else {
+                    await loadDailyProgress();
+                    await fetchRecords(1);
+                }
             } catch (err) {
                 showToast("Failed to parse file: " + err.message, "error");
             } finally {

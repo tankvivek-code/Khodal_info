@@ -41,10 +41,12 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
 EXPORT_DIR = os.path.join(BASE_DIR, "exports")
 STATIC_DIR = os.path.join(BASE_DIR, "static")
+TEMPLATE_DIR = os.path.join(BASE_DIR, "templates")
 
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(EXPORT_DIR, exist_ok=True)
 os.makedirs(STATIC_DIR, exist_ok=True)
+os.makedirs(TEMPLATE_DIR, exist_ok=True)
 
 
 def get_local_ip() -> str:
@@ -298,6 +300,30 @@ async def export_excel(
     
     return FileResponse(
         path=export_path,
+        filename=filename,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+
+@app.get("/api/templates/{template_name}")
+async def download_excel_template(template_name: str):
+    allowed_templates = {
+        "master": "Khodal_Office_Master_Template.xlsx",
+        "ucaadhar": "Template_1_UC_Aadhaar.xlsx",
+        "aadhar_online": "Template_2_Aadhaar_Online.xlsx",
+        "pancard": "Template_3_PAN_Card.xlsx",
+        "aayushman": "Template_4_Ayushman_Card.xlsx",
+    }
+    filename = allowed_templates.get(template_name.lower())
+    if not filename:
+        raise HTTPException(status_code=404, detail="Template not found. Available: master, ucaadhar, aadhar_online, pancard, aayushman")
+
+    file_path = os.path.join(TEMPLATE_DIR, filename)
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail=f"Template file '{filename}' not found on server")
+
+    return FileResponse(
+        path=file_path,
         filename=filename,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )

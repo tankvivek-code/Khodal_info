@@ -59,10 +59,32 @@ def clean_phone(val: Any) -> Tuple[str, str]:
     return s, norm
 
 
+from datetime import datetime, timedelta
+
 def normalize_date_str(val: Any) -> str:
     if pd.isna(val) or val is None:
         return ""
+    if isinstance(val, (int, float)):
+        try:
+            if 30000 <= val <= 65000:
+                base = datetime(1899, 12, 30)
+                dt = base + timedelta(days=float(val))
+                return dt.strftime("%Y-%m-%d")
+        except Exception:
+            pass
+    if isinstance(val, (datetime, pd.Timestamp)):
+        return val.strftime("%Y-%m-%d")
+
     s = str(val).strip()
+    try:
+        fval = float(s)
+        if 30000 <= fval <= 65000:
+            base = datetime(1899, 12, 30)
+            dt = base + timedelta(days=fval)
+            return dt.strftime("%Y-%m-%d")
+    except Exception:
+        pass
+
     m = DATE_REGEX.search(s)
     if not m:
         return ""
@@ -70,8 +92,14 @@ def normalize_date_str(val: Any) -> str:
     parts = raw.split("-")
     if len(parts) == 3:
         if len(parts[0]) == 4:
-            # YYYY-MM-DD
-            return f"{parts[0]}-{int(parts[1]):02d}-{int(parts[2]):02d}"
+            # YYYY-MM-DD or YYYY-DD-MM (Excel US-locale export flip)
+            y = parts[0]
+            p1 = int(parts[1])
+            p2 = int(parts[2])
+            # If p2 == 10 and p1 <= 31 (like in Gujarat office PAN registers), it's Oct DD
+            if 1 <= p1 <= 31 and p2 == 10:
+                return f"{y}-10-{p1:02d}"
+            return f"{y}-{p1:02d}-{p2:02d}"
         else:
             # DD-MM-YYYY or DD-MM-YY
             year = parts[2]
@@ -154,7 +182,24 @@ def parse_single_sheet_df(
 
     records = []
     sheet_date = normalize_date_str(sheet_name)
-    current_date = sheet_date if sheet_date else datetime.now().strftime("%Y-%m-%d")
+    current_date = sheet_date if sheet_date else ""
+    if not current_date:
+        for r_vals in raw_rows[:60]:
+            for c in r_vals:
+                if not c:
+                    continue
+                sid_d = extract_date_from_sid(c)
+                if sid_d:
+                    current_date = sid_d
+                    break
+                nd = normalize_date_str(c)
+                if nd and len(c) <= 15:
+                    current_date = nd
+                    break
+            if current_date:
+                break
+    if not current_date:
+        current_date = datetime.now().strftime("%Y-%m-%d")
 
     headers = []
     idx_date = -1
