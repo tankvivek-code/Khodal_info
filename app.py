@@ -347,18 +347,23 @@ async def serve_index():
     return HTMLResponse("<h1>Khodal Office Hub: index.html not found</h1>")
 
 
-def open_browser():
+def open_browser(port: int = 8000):
     time.sleep(1.2)
-    webbrowser.open("http://localhost:8000")
+    try:
+        webbrowser.open(f"http://localhost:{port}")
+    except Exception:
+        pass
 
 
 if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 8000))
     print("=" * 65)
     lan_ip = get_local_ip()
     print("🚀 KHODAL OFFICE DATA HUB - FIELD-DIVIDED DAILY WORK TRACKER")
-    print(f"📍 Local Access:        http://localhost:8000")
-    print(f"🌐 Office LAN Share:    http://{lan_ip}:8000")
+    print(f"📍 Local Access:        http://localhost:{port}")
+    print(f"🌐 Office LAN Share:    http://{lan_ip}:{port}")
     print("=" * 65)
     
-    threading.Thread(target=open_browser, daemon=True).start()
-    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=False)
+    if os.environ.get("ENVIRONMENT") != "production" and not os.environ.get("PORT"):
+        threading.Thread(target=open_browser, args=(port,), daemon=True).start()
+    uvicorn.run("app:app", host="0.0.0.0", port=port, reload=False)
