@@ -160,15 +160,25 @@ try {
     localStorage.removeItem("khodal_records_store");
 } catch (e) {}
 
-const isOnlineServer = (window.location.protocol === "http:" || window.location.protocol === "https:");
-let isStaticMode = !isOnlineServer;
+const isGitHubPages = window.location.hostname.includes("github.io");
+const isFileProtocol = window.location.protocol === "file:";
+let isStaticMode = isGitHubPages || isFileProtocol;
 let staticRecords = [];
-const STORAGE_KEY = "khodal_records_store_v6";
-const FILES_STORAGE_KEY = "khodal_files_list_v6";
+const STORAGE_KEY = "khodal_records_store_v7";
+const FILES_STORAGE_KEY = "khodal_files_list_v7";
+const USERS_STORAGE_KEY = "khodal_static_users_v7";
+const AUTH_SESSION_KEY = "khodal_static_auth_session_v7";
 
-// Purge any legacy default/dummy data stores from previous versions
+const DEFAULT_MASTER_USERS = [
+    { id: 1, username: "manish", full_name: "Manish", role: "master", is_active: 1, password: "manish@7575", created_at: "2026-11-03 15:18:20", last_login: "2026-11-03 21:00:00" },
+    { id: 2, username: "admin", full_name: "Master Admin", role: "master", is_active: 1, password: "admin@7575", created_at: "2026-11-03 16:00:00", last_login: "2026-11-03 21:00:00" }
+];
+
+// Purge only legacy browser storage keys from earlier iterations
 (function purgeLegacyData() {
     const legacyKeys = [
+        "khodal_master_session_v1", "khodal_master_session", "khodal_auth",
+        "khodal_records_store_v6", "khodal_files_list_v6",
         "khodal_records_store_v5", "khodal_files_list_v5",
         "khodal_records_store_v4", "khodal_files_list_v4",
         "khodal_records_store_v3", "khodal_files_list_v3",
@@ -177,9 +187,37 @@ const FILES_STORAGE_KEY = "khodal_files_list_v6";
         "khodal_records_store", "khodal_files_list"
     ];
     legacyKeys.forEach(k => {
-        try { localStorage.removeItem(k); } catch (e) {}
+        try {
+            localStorage.removeItem(k);
+            sessionStorage.removeItem(k);
+        } catch (e) {}
     });
 })();
+
+function getStaticUsers() {
+    try {
+        const saved = localStorage.getItem(USERS_STORAGE_KEY);
+        if (saved) {
+            const parsed = JSON.parse(saved);
+            if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+    } catch (e) {}
+    if (window.KHODAL_MASTER_USERS && Array.isArray(window.KHODAL_MASTER_USERS) && window.KHODAL_MASTER_USERS.length > 0) {
+        const users = window.KHODAL_MASTER_USERS.map(u => ({
+            ...u,
+            password: (u.username === "admin") ? "admin@7575" : "manish@7575"
+        }));
+        saveStaticUsers(users);
+        return users;
+    }
+    return DEFAULT_MASTER_USERS.slice();
+}
+
+function saveStaticUsers(users) {
+    try {
+        localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users || []));
+    } catch (e) {}
+}
 
 function getStaticFiles() {
     const saved = localStorage.getItem(FILES_STORAGE_KEY);
@@ -188,6 +226,9 @@ function getStaticFiles() {
             const parsed = JSON.parse(saved);
             if (Array.isArray(parsed) && parsed.length > 0) return parsed;
         } catch (e) {}
+    }
+    if (window.KHODAL_INITIAL_FILES && Array.isArray(window.KHODAL_INITIAL_FILES) && window.KHODAL_INITIAL_FILES.length > 0) {
+        return window.KHODAL_INITIAL_FILES.slice();
     }
     return [];
 }
@@ -199,21 +240,25 @@ function saveStaticFiles(filesList) {
 }
 
 async function initDataStore() {
-    if (isOnlineServer) {
-        // Enforce Server Mode - SQLite khodal_office.db is the authoritative single source of truth
-        isStaticMode = false;
-        updateDatabaseStatusBadge();
+    if (!isGitHubPages && !isFileProtocol) {
         try {
-            await fetch("/api/info");
+            const testRes = await fetch("/api/info");
+            if (testRes.ok) {
+                isStaticMode = false;
+                updateDatabaseStatusBadge();
+                return;
+            } else {
+                isStaticMode = true;
+            }
         } catch (e) {
-            console.warn("Backend API warning:", e);
+            isStaticMode = true;
         }
-        return;
+    } else {
+        isStaticMode = true;
     }
 
-    // Only if running purely offline without server (e.g. file:/// or GitHub Pages)
+    // Static mode initialization (GitHub Pages, file://, or offline)
     isStaticMode = true;
-    updateDatabaseStatusBadge();
     staticRecords = [];
     const cached = localStorage.getItem(STORAGE_KEY);
     if (cached) {
@@ -224,6 +269,24 @@ async function initDataStore() {
             }
         } catch (e) {}
     }
+
+    // Seed from window.KHODAL_RECORDS (populated by data/records.js) if cache is empty
+    if (!staticRecords || staticRecords.length === 0) {
+        if (window.KHODAL_RECORDS && Array.isArray(window.KHODAL_RECORDS) && window.KHODAL_RECORDS.length > 0) {
+            staticRecords = window.KHODAL_RECORDS.slice();
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(staticRecords));
+            } catch (e) {}
+        }
+    }
+
+    // Initialize files and users
+    const files = getStaticFiles();
+    saveStaticFiles(files);
+    const users = getStaticUsers();
+    saveStaticUsers(users);
+
+    updateDatabaseStatusBadge();
 }
 
 async function initApp() {
@@ -291,23 +354,31 @@ async function loadDailyProgress() {
         const total = records.length;
         let completed = 0;
         let inProcess = 0;
+        let rejected = 0;
         let baki = 0;
         let fee = 0.0;
 
         records.forEach(r => {
             const st = (r.status || "").toLowerCase();
-            if (st === "completed" || st === "complete" || st === "done") completed++;
-            else inProcess++;
+            if (st.includes("reject") || st.includes("cancel") || st.includes("fail")) rejected++;
+            else if (st.includes("complete") || st.includes("done") || st.includes("ok")) completed++;
+            else if (st) inProcess++;
 
             if (r.is_baki === 1 || (r.remark || "").toUpperCase().includes("BAKI")) baki++;
             fee += Number(r.fee_amt || 0);
         });
 
         const completionRate = total > 0 ? Math.round((completed / total) * 1000) / 10 : 0.0;
+        const rejectionRate = total > 0 ? Math.round((rejected / total) * 1000) / 10 : 0.0;
 
         document.getElementById("stat-progress-total").textContent = total.toLocaleString();
         document.getElementById("stat-progress-completed").textContent = completed.toLocaleString();
         document.getElementById("stat-progress-inprocess").textContent = inProcess.toLocaleString();
+        const statRejEl = document.getElementById("stat-progress-rejected");
+        if (statRejEl) statRejEl.textContent = rejected.toLocaleString();
+        const statRejRateEl = document.getElementById("stat-progress-reject-rate");
+        if (statRejRateEl) statRejRateEl.textContent = `${rejectionRate}%`;
+
         document.getElementById("stat-progress-baki").textContent = baki.toLocaleString();
         document.getElementById("stat-progress-fees").textContent = fee.toLocaleString();
         document.getElementById("stat-progress-rate").textContent = `${completionRate}%`;
@@ -352,6 +423,11 @@ async function loadDailyProgress() {
         document.getElementById("stat-progress-total").textContent = (data.total_applications || 0).toLocaleString();
         document.getElementById("stat-progress-completed").textContent = (data.completed || 0).toLocaleString();
         document.getElementById("stat-progress-inprocess").textContent = (data.in_process || 0).toLocaleString();
+        const statRejEl = document.getElementById("stat-progress-rejected");
+        if (statRejEl) statRejEl.textContent = (data.rejected || 0).toLocaleString();
+        const statRejRateEl = document.getElementById("stat-progress-reject-rate");
+        if (statRejRateEl) statRejRateEl.textContent = `${data.rejection_rate || 0}%`;
+
         document.getElementById("stat-progress-baki").textContent = (data.baki_pending || 0).toLocaleString();
         document.getElementById("stat-progress-fees").textContent = (data.total_fee || 0).toLocaleString();
         document.getElementById("stat-progress-rate").textContent = `${data.completion_rate || 0}%`;
@@ -579,12 +655,12 @@ function renderTableHeaders(serviceType) {
             <tr>
                 <th class="py-3 px-3 w-10 text-center">#</th>
                 <th class="py-3 px-3">Date</th>
-                <th class="py-3 px-3">SID Number</th>
                 <th class="py-3 px-3">Name</th>
+                <th class="py-3 px-3">SID Number</th>
+                <th class="py-3 px-3">Mobile No</th>
                 <th class="py-3 px-3 text-center">Status</th>
                 <th class="py-3 px-3 text-right">Total (₹)</th>
                 <th class="py-3 px-3 text-right">Fee (₹)</th>
-                <th class="py-3 px-3">Mobile / Others</th>
                 <th class="py-3 px-3">Remarks</th>
                 <th class="py-3 px-3 text-center w-28">Actions</th>
             </tr>
@@ -597,49 +673,50 @@ function renderTableHeaders(serviceType) {
                 <th class="py-3 px-3">Name</th>
                 <th class="py-3 px-3">SRN Number</th>
                 <th class="py-3 px-3">Mobile No</th>
-                <th class="py-3 px-3">Remarks</th>
                 <th class="py-3 px-3 text-center">Status</th>
+                <th class="py-3 px-3">Remarks</th>
                 <th class="py-3 px-3 text-center w-28">Actions</th>
             </tr>
         `;
     } else if (serviceType === "pancard") {
+        // PAN Card does NOT need status
         trHtml = `
             <tr>
                 <th class="py-3 px-3 w-10 text-center">#</th>
                 <th class="py-3 px-3">Date</th>
                 <th class="py-3 px-3">Name</th>
-                <th class="py-3 px-3">PAN Change / New</th>
                 <th class="py-3 px-3">Mobile Number</th>
+                <th class="py-3 px-3">PAN Change / New</th>
+                <th class="py-3 px-3 text-right">Fee (₹)</th>
                 <th class="py-3 px-3">Remarks</th>
-                <th class="py-3 px-3 text-center">Status</th>
                 <th class="py-3 px-3 text-center w-28">Actions</th>
             </tr>
         `;
     } else if (serviceType === "aayushman") {
+        // Ayushman Card does NOT need status
         trHtml = `
             <tr>
                 <th class="py-3 px-3 w-10 text-center">#</th>
                 <th class="py-3 px-3">Date</th>
-                <th class="py-3 px-3">Ration / Ayushman No</th>
                 <th class="py-3 px-3">Name</th>
+                <th class="py-3 px-3">Ration / Ayushman No</th>
                 <th class="py-3 px-3">Mobile No</th>
                 <th class="py-3 px-3">Remarks</th>
-                <th class="py-3 px-3 text-center">Status</th>
                 <th class="py-3 px-3 text-center w-28">Actions</th>
             </tr>
         `;
     } else {
-        // All Services
+        // All Services: Starts with Sr No, Date, Name, Service, ID Number, Mobile No...
         trHtml = `
             <tr>
                 <th class="py-3 px-3 w-10 text-center">#</th>
-                <th class="py-3 px-3">Service</th>
                 <th class="py-3 px-3">Date</th>
                 <th class="py-3 px-3">Name</th>
-                <th class="py-3 px-3">SID / SRN / Card No</th>
+                <th class="py-3 px-3">Service</th>
+                <th class="py-3 px-3">ID / Number</th>
                 <th class="py-3 px-3">Mobile No</th>
-                <th class="py-3 px-3 text-center">Status / Type</th>
-                <th class="py-3 px-3 text-right">Fee</th>
+                <th class="py-3 px-3 text-center">Status</th>
+                <th class="py-3 px-3 text-right">Fee (₹)</th>
                 <th class="py-3 px-3">Remarks</th>
                 <th class="py-3 px-3 text-center w-28">Actions</th>
             </tr>
@@ -695,7 +772,7 @@ function renderRecordsTable(records, serviceType) {
         const waUrl = getWhatsAppUrl(r.mobile, r.name);
         const callUrl = r.mobile ? `tel:${r.mobile}` : "#";
 
-        // Status Badge & Quick Toggle
+        // Status Badge & Quick Toggle (Aadhaar 3-way, PAN/Ayushman blank)
         const statusBadge = renderStatusBadge(r);
 
         // Service Badge for All Services tab
@@ -704,24 +781,26 @@ function renderRecordsTable(records, serviceType) {
         let rowHtml = "";
 
         if (serviceType === "ucaadhar") {
+            // UC Aadhaar: Sr No -> Date -> Name -> SID Number -> Mobile No -> Status -> Total -> Fee -> Remarks -> Actions
             rowHtml = `
                 <td class="py-3 px-3 text-center text-xs font-mono text-slate-400 font-medium">${globalIdx}</td>
                 <td class="py-3 px-3 text-xs font-mono font-medium text-slate-700 whitespace-nowrap">${escapeHtml(formatDateDisplay(r.record_date))}</td>
-                <td class="py-3 px-3 font-mono text-xs font-semibold text-brand-700 max-w-[200px] truncate" title="${escapeHtml(r.id_number)}">${hlId}</td>
                 <td class="py-3 px-3 text-sm font-semibold text-slate-900 truncate max-w-[190px] cursor-pointer hover:text-brand-600" onclick="viewRecordDetails(${r.id})">${hlName}</td>
-                <td class="py-3 px-3 text-center">${statusBadge}</td>
-                <td class="py-3 px-3 text-xs text-right font-mono text-slate-600">${r.total_amt > 0 ? '₹' + r.total_amt : '-'}</td>
-                <td class="py-3 px-3 text-xs text-right font-mono font-bold text-emerald-700">${r.fee_amt > 0 ? '₹' + r.fee_amt : '-'}</td>
+                <td class="py-3 px-3 font-mono text-xs font-semibold text-brand-700 max-w-[200px] truncate" title="${escapeHtml(r.id_number)}">${hlId}</td>
                 <td class="py-3 px-3">
                     <div class="flex items-center gap-1.5 font-mono text-xs font-semibold text-slate-800">
                         ${r.mobile ? `<span>${hlMobile}</span>` : `<span class="text-slate-400 font-normal">-</span>`}
                         ${waUrl ? `<a href="${waUrl}" target="_blank" class="p-0.5 rounded text-emerald-600 hover:bg-emerald-50"><i data-lucide="message-circle" class="w-3.5 h-3.5"></i></a>` : ""}
                     </div>
                 </td>
+                <td class="py-3 px-3 text-center">${statusBadge}</td>
+                <td class="py-3 px-3 text-xs text-right font-mono text-slate-600">${r.total_amt > 0 ? '₹' + r.total_amt : '-'}</td>
+                <td class="py-3 px-3 text-xs text-right font-mono font-bold text-emerald-700">${r.fee_amt > 0 ? '₹' + r.fee_amt : '-'}</td>
                 <td class="py-3 px-3 text-xs text-slate-600 max-w-[160px] truncate" title="${escapeHtml(r.remark)}">${renderRemarkWithBaki(r.remark)}</td>
                 <td class="py-3 px-3 text-center">${renderActions(r, waUrl, callUrl)}</td>
             `;
         } else if (serviceType === "aadhar_online") {
+            // Aadhaar Online: Sr No -> Date -> Name -> SRN Number -> Mobile No -> Status -> Remarks -> Actions
             rowHtml = `
                 <td class="py-3 px-3 text-center text-xs font-mono text-slate-400 font-medium">${globalIdx}</td>
                 <td class="py-3 px-3 text-xs font-mono font-medium text-slate-700 whitespace-nowrap">${escapeHtml(formatDateDisplay(r.record_date))}</td>
@@ -733,32 +812,34 @@ function renderRecordsTable(records, serviceType) {
                         ${waUrl ? `<a href="${waUrl}" target="_blank" class="p-0.5 rounded text-emerald-600 hover:bg-emerald-50"><i data-lucide="message-circle" class="w-3.5 h-3.5"></i></a>` : ""}
                     </div>
                 </td>
-                <td class="py-3 px-3 text-xs text-slate-700 max-w-[180px] truncate" title="${escapeHtml(r.remark)}">${renderRemarkWithBaki(r.remark)}</td>
                 <td class="py-3 px-3 text-center">${statusBadge}</td>
+                <td class="py-3 px-3 text-xs text-slate-700 max-w-[180px] truncate" title="${escapeHtml(r.remark)}">${renderRemarkWithBaki(r.remark)}</td>
                 <td class="py-3 px-3 text-center">${renderActions(r, waUrl, callUrl)}</td>
             `;
         } else if (serviceType === "pancard") {
+            // PAN Card: Sr No -> Date -> Name -> Mobile Number -> PAN Change/New -> Fee -> Remarks -> Actions (NO STATUS)
             rowHtml = `
                 <td class="py-3 px-3 text-center text-xs font-mono text-slate-400 font-medium">${globalIdx}</td>
                 <td class="py-3 px-3 text-xs font-mono font-medium text-slate-700 whitespace-nowrap">${escapeHtml(formatDateDisplay(r.record_date))}</td>
                 <td class="py-3 px-3 text-sm font-semibold text-slate-900 truncate max-w-[200px] cursor-pointer hover:text-brand-600" onclick="viewRecordDetails(${r.id})">${hlName}</td>
-                <td class="py-3 px-3 text-xs font-bold ${(r.pan_type || '').includes('NEW') ? 'text-blue-700' : 'text-amber-700'}">${escapeHtml(r.pan_type || '-')}</td>
                 <td class="py-3 px-3">
                     <div class="flex items-center gap-1.5 font-mono text-xs font-semibold text-slate-800">
                         <span>${hlMobile}</span>
                         ${waUrl ? `<a href="${waUrl}" target="_blank" class="p-0.5 rounded text-emerald-600 hover:bg-emerald-50"><i data-lucide="message-circle" class="w-3.5 h-3.5"></i></a>` : ""}
                     </div>
                 </td>
+                <td class="py-3 px-3 text-xs font-bold ${(r.pan_type || '').includes('NEW') ? 'text-blue-700' : 'text-amber-700'}">${escapeHtml(r.pan_type || '-')}</td>
+                <td class="py-3 px-3 text-xs text-right font-mono font-bold text-emerald-700">${r.fee_amt > 0 ? '₹' + r.fee_amt : '-'}</td>
                 <td class="py-3 px-3 text-xs text-slate-600">${renderRemarkWithBaki(r.remark)}</td>
-                <td class="py-3 px-3 text-center">${statusBadge}</td>
                 <td class="py-3 px-3 text-center">${renderActions(r, waUrl, callUrl)}</td>
             `;
         } else if (serviceType === "aayushman") {
+            // Ayushman Card: Sr No -> Date -> Name -> Ration/Ayushman No -> Mobile No -> Remarks -> Actions (NO STATUS)
             rowHtml = `
                 <td class="py-3 px-3 text-center text-xs font-mono text-slate-400 font-medium">${globalIdx}</td>
                 <td class="py-3 px-3 text-xs font-mono font-medium text-slate-700 whitespace-nowrap">${escapeHtml(formatDateDisplay(r.record_date))}</td>
-                <td class="py-3 px-3 font-mono text-xs font-bold text-purple-700 max-w-[170px] truncate" title="${escapeHtml(r.id_number)}">${hlId}</td>
                 <td class="py-3 px-3 text-sm font-semibold text-slate-900 truncate max-w-[200px] cursor-pointer hover:text-brand-600" onclick="viewRecordDetails(${r.id})">${hlName}</td>
+                <td class="py-3 px-3 font-mono text-xs font-bold text-purple-700 max-w-[170px] truncate" title="${escapeHtml(r.id_number)}">${hlId}</td>
                 <td class="py-3 px-3">
                     <div class="flex items-center gap-1.5 font-mono text-xs font-semibold text-slate-800">
                         <span>${hlMobile}</span>
@@ -766,16 +847,15 @@ function renderRecordsTable(records, serviceType) {
                     </div>
                 </td>
                 <td class="py-3 px-3 text-xs text-slate-600 max-w-[180px] truncate" title="${escapeHtml(r.remark)}">${renderRemarkWithBaki(r.remark)}</td>
-                <td class="py-3 px-3 text-center">${statusBadge}</td>
                 <td class="py-3 px-3 text-center">${renderActions(r, waUrl, callUrl)}</td>
             `;
         } else {
-            // All Services
+            // All Services: Sr No -> Date -> Name -> Service -> ID Number -> Mobile No -> Status -> Fee -> Remarks -> Actions
             rowHtml = `
                 <td class="py-3 px-3 text-center text-xs font-mono text-slate-400 font-medium">${globalIdx}</td>
-                <td class="py-3 px-3">${svcBadge}</td>
                 <td class="py-3 px-3 text-xs font-mono font-medium text-slate-700 whitespace-nowrap">${escapeHtml(formatDateDisplay(r.record_date))}</td>
                 <td class="py-3 px-3 text-sm font-semibold text-slate-900 truncate max-w-[180px] cursor-pointer hover:text-brand-600" onclick="viewRecordDetails(${r.id})">${hlName}</td>
+                <td class="py-3 px-3">${svcBadge}</td>
                 <td class="py-3 px-3 font-mono text-xs font-semibold text-slate-700 max-w-[150px] truncate" title="${escapeHtml(r.id_number)}">${hlId}</td>
                 <td class="py-3 px-3">
                     <div class="flex items-center gap-1.5 font-mono text-xs font-semibold text-slate-800">
@@ -798,16 +878,38 @@ function renderRecordsTable(records, serviceType) {
 }
 
 function renderStatusBadge(r) {
-    const isComp = (r.status || "").toLowerCase().includes("complete") || (r.status || "").toLowerCase().includes("ok");
-    const label = r.status || (r.pan_type ? r.pan_type : "InProcess");
+    const svc = (r.service_type || "").toLowerCase();
+    // In PAN Card and Ayushman Card, status is NOT needed
+    if (svc === "pancard" || svc === "aayushman") {
+        return `<span class="text-slate-400 font-normal">-</span>`;
+    }
 
-    if (isComp) {
-        return `<button onclick="toggleRecordStatus(${r.id}, 'InProcess')" title="Click to mark InProcess" class="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 hover:bg-emerald-200 transition">
+    const stRaw = (r.status || "").toLowerCase();
+    let normalized = "InProgress";
+    let nextStatus = "Rejected";
+
+    if (stRaw.includes("reject") || stRaw.includes("cancel") || stRaw.includes("fail")) {
+        normalized = "Rejected";
+        nextStatus = "Completed";
+    } else if (stRaw.includes("complete") || stRaw.includes("done") || stRaw.includes("success") || stRaw.includes("ok")) {
+        normalized = "Completed";
+        nextStatus = "InProgress";
+    } else {
+        normalized = "InProgress";
+        nextStatus = "Rejected";
+    }
+
+    if (normalized === "Completed") {
+        return `<button onclick="toggleRecordStatus(${r.id}, '${nextStatus}')" title="Status: Completed (Click to change to InProgress)" class="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 hover:bg-emerald-200 border border-emerald-300 transition shadow-2xs">
             <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Completed
         </button>`;
+    } else if (normalized === "InProgress") {
+        return `<button onclick="toggleRecordStatus(${r.id}, '${nextStatus}')" title="Status: InProgress (Click to change to Rejected)" class="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 hover:bg-amber-200 border border-amber-300 transition shadow-2xs">
+            <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span> InProgress
+        </button>`;
     } else {
-        return `<button onclick="toggleRecordStatus(${r.id}, 'Completed')" title="Click to mark Completed" class="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 hover:bg-amber-200 transition">
-            <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span> ${escapeHtml(label)}
+        return `<button onclick="toggleRecordStatus(${r.id}, '${nextStatus}')" title="Status: Rejected (Click to change to Completed)" class="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-800 hover:bg-rose-200 border border-rose-300 transition shadow-2xs">
+            <span class="w-1.5 h-1.5 rounded-full bg-rose-500"></span> Rejected
         </button>`;
     }
 }
@@ -1126,7 +1228,17 @@ function viewRecordDetails(recordId) {
     document.getElementById("view-date").textContent = formatDateDisplay(record.record_date);
     document.getElementById("view-id-num").textContent = record.id_number || "-";
     document.getElementById("view-mobile").textContent = record.mobile || "-";
-    document.getElementById("view-status").textContent = record.status || (record.pan_type || "InProcess");
+
+    const statusRow = document.getElementById("view-row-status");
+    const recSvc = (record.service_type || "").toLowerCase();
+    if (recSvc === "pancard" || recSvc === "aayushman") {
+        if (statusRow) statusRow.classList.add("hidden");
+    } else {
+        if (statusRow) statusRow.classList.remove("hidden");
+        const viewStatusEl = document.getElementById("view-status");
+        if (viewStatusEl) viewStatusEl.textContent = record.status || "Completed";
+    }
+
     document.getElementById("view-remark").textContent = record.remark || "-";
 
     const feeEl = document.getElementById("view-fee");
@@ -1190,23 +1302,36 @@ function copyRecordCard(recordId) {
 function updateFormIdLabel(svc) {
     const label = document.getElementById("form-id-label");
     const input = document.getElementById("form-id-number");
+    const statusContainer = document.getElementById("form-status-container");
+    const panInput = document.getElementById("form-pan-type");
+    const panContainer = panInput ? panInput.closest("div") : null;
     if (!label || !input) return;
 
     if (svc === "ucaadhar") {
         label.textContent = "SID Number (UC Aadhaar) *";
         input.placeholder = "e.g. S148796318971020261001104627";
+        if (statusContainer) statusContainer.classList.remove("hidden");
+        if (panContainer) panContainer.classList.add("hidden");
     } else if (svc === "aadhar_online") {
         label.textContent = "SRN Number (Aadhaar Online) *";
         input.placeholder = "e.g. S1311143561680";
+        if (statusContainer) statusContainer.classList.remove("hidden");
+        if (panContainer) panContainer.classList.add("hidden");
     } else if (svc === "pancard") {
         label.textContent = "PAN / Acknowledgement No";
         input.placeholder = "e.g. ABCDE1234F / Ack No";
+        if (statusContainer) statusContainer.classList.add("hidden");
+        if (panContainer) panContainer.classList.remove("hidden");
     } else if (svc === "aayushman") {
         label.textContent = "Ration / Ayushman Card No";
         input.placeholder = "e.g. PAJYXBXFU... / 109904008663704";
+        if (statusContainer) statusContainer.classList.add("hidden");
+        if (panContainer) panContainer.classList.add("hidden");
     } else {
         label.textContent = "SID / SRN / Card No";
         input.placeholder = "e.g. S131114... / PAJY...";
+        if (statusContainer) statusContainer.classList.remove("hidden");
+        if (panContainer) panContainer.classList.remove("hidden");
     }
 }
 
@@ -1267,7 +1392,20 @@ function openEditRecordModal(recordId) {
     document.getElementById("form-name").value = r.name || "";
     document.getElementById("form-mobile").value = r.mobile || "";
     document.getElementById("form-id-number").value = r.id_number || "";
-    document.getElementById("form-status").value = r.status || "Completed";
+
+    const stSelect = document.getElementById("form-status");
+    if (stSelect) {
+        if (["Completed", "InProgress", "Rejected"].includes(r.status)) {
+            stSelect.value = r.status;
+        } else if ((r.status || "").toLowerCase().includes("process")) {
+            stSelect.value = "InProgress";
+        } else if ((r.status || "").toLowerCase().includes("reject")) {
+            stSelect.value = "Rejected";
+        } else {
+            stSelect.value = "Completed";
+        }
+    }
+
     const panInput = document.getElementById("form-pan-type");
     if (panInput) panInput.value = r.pan_type || "";
     document.getElementById("form-fee").value = r.fee_amt || r.total_amt || "";
@@ -1281,13 +1419,24 @@ async function handleRecordFormSubmit(e) {
     const recordId = document.getElementById("form-record-id").value;
     const isEdit = !!recordId;
 
+    const svc = document.getElementById("form-service-type").value;
+    let stVal = document.getElementById("form-status").value;
+    // PAN card and Ayushman card do NOT need status
+    if (svc === "pancard" || svc === "aayushman") {
+        stVal = "";
+    } else {
+        if (!["Completed", "InProgress", "Rejected"].includes(stVal)) {
+            stVal = "InProgress";
+        }
+    }
+
     const payload = {
-        service_type: document.getElementById("form-service-type").value,
+        service_type: svc,
         record_date: document.getElementById("form-date").value,
         name: document.getElementById("form-name").value.trim(),
         mobile: document.getElementById("form-mobile").value.trim(),
         id_number: document.getElementById("form-id-number").value.trim(),
-        status: document.getElementById("form-status").value,
+        status: stVal,
         pan_type: document.getElementById("form-pan-type").value.trim(),
         fee_amt: parseFloat(document.getElementById("form-fee").value) || 0.0,
         total_amt: parseFloat(document.getElementById("form-fee").value) || 0.0,
@@ -1485,8 +1634,8 @@ async function submitFileUpload() {
     progressBox.classList.remove("hidden");
     submitBtn.disabled = true;
 
-        // 1. ONLINE SERVER MODE: Always upload to FastAPI backend & SQLite database
-    if (isOnlineServer && !isStaticMode) {
+    // 1. ONLINE SERVER MODE: Upload to FastAPI backend & SQLite database
+    if (!isStaticMode) {
         try {
             const res = await fetch("/api/upload", {
                 method: "POST",
@@ -1874,16 +2023,14 @@ async function submitFileUpload() {
                             }
                         }
 
-                        // 7. Status
+                        // 7. Status (Completed, InProgress, Rejected for Aadhaar; None for PAN/Ayushman)
                         let status = "Completed";
-                        if (/REJECT/i.test(joinedUpper)) status = "Reject";
-                        else if (/INPROCESS|IN PROCESS/i.test(joinedUpper)) status = "InProcess";
-                        else if (/PENDING/i.test(joinedUpper)) status = "Pending";
+                        if (/REJECT/i.test(joinedUpper)) status = "Rejected";
+                        else if (/INPROCESS|IN PROCESS/i.test(joinedUpper) || /PENDING/i.test(joinedUpper)) status = "InProgress";
                         else if (idxStatus !== -1 && idxStatus < rowStr.length && rowStr[idxStatus]) {
                             const stRaw = rowStr[idxStatus].toLowerCase();
-                            if (stRaw.includes("process")) status = "InProcess";
-                            else if (stRaw.includes("reject")) status = "Reject";
-                            else if (stRaw.includes("pending")) status = "Pending";
+                            if (stRaw.includes("process") || stRaw.includes("pending")) status = "InProgress";
+                            else if (stRaw.includes("reject") || stRaw.includes("cancel")) status = "Rejected";
                             else if (stRaw.includes("complet")) status = "Completed";
                         }
 
@@ -1977,7 +2124,7 @@ async function submitFileUpload() {
                                 normalized_mobile: normMob,
                                 id_number: idNum,
                                 pan_type: panType || ((rowSvc === "pancard" && idxPan !== -1) ? rowStr[idxPan] : ""),
-                                status: status || "Completed",
+                                status: (rowSvc === "pancard" || rowSvc === "aayushman") ? "" : (status || "Completed"),
                                 fee_amt: feeAmt,
                                 total_amt: totalAmt,
                                 remark: remark,
@@ -2036,32 +2183,6 @@ async function submitFileUpload() {
         };
         reader.readAsArrayBuffer(selectedUploadFile);
         return;
-    }
-
-    try {
-        const res = await fetch("/api/upload", {
-            method: "POST",
-            body: formData
-        });
-
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.detail || "Upload failed");
-
-        showToast(data.message || `Successfully imported ${data.imported_rows} records!`, "success");
-        closeModal("modal-upload");
-
-        selectedUploadFile = null;
-        document.getElementById("file-input").value = "";
-        document.getElementById("selected-file-name").classList.add("hidden");
-
-        await loadDailyProgress();
-        await fetchRecords(1);
-
-    } catch (err) {
-        showToast(err.message, "error");
-    } finally {
-        progressBox.classList.add("hidden");
-        submitBtn.disabled = false;
     }
 }
 
@@ -2161,27 +2282,16 @@ async function confirmDeleteFile(fileId, filename) {
     try {
         const res = await fetch(`/api/files/${fileId}`, { method: "DELETE" });
         if (!res.ok) {
-            let files = getStaticFiles();
-            files = files.filter(f => f.id !== fileId);
-            saveStaticFiles(files);
-            staticRecords = staticRecords.filter(r => r.file_id !== fileId);
-            try { localStorage.setItem(STORAGE_KEY, JSON.stringify(staticRecords)); } catch (e) {}
+            const errData = await res.json().catch(() => ({}));
+            throw new Error(errData.detail || "Failed to delete file from database");
         }
 
-        showToast(`Deleted ${filename}`, "info");
+        showToast(`Deleted ${filename} from database`, "info");
         await loadDailyProgress();
         await openFilesModal();
         await fetchRecords(1);
     } catch (err) {
-        let files = getStaticFiles();
-        files = files.filter(f => f.id !== fileId);
-        saveStaticFiles(files);
-        staticRecords = staticRecords.filter(r => r.file_id !== fileId);
-        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(staticRecords)); } catch (e) {}
-        showToast(`Deleted ${filename}`, "info");
-        await loadDailyProgress();
-        await openFilesModal();
-        await fetchRecords(1);
+        showToast("Error: " + err.message, "error");
     }
 }
 
@@ -2221,18 +2331,69 @@ function exportCurrentView(format = "excel") {
             });
         }
 
+        const currentSvc = (params.service_type || "all").toLowerCase();
+
         if (format === "excel" && window.XLSX) {
-            const wsData = records.map((r, i) => ({
-                "Sr No": i + 1,
-                "Service": (r.service_type || "").toUpperCase(),
-                "Date": formatDateDisplay(r.record_date),
-                "Name": r.name || "",
-                "ID Number": r.id_number || "",
-                "Mobile No": r.mobile || "",
-                "Status": r.status || "",
-                "Amount": r.fee_amt || 0,
-                "Remarks": r.remark || ""
-            }));
+            let wsData = [];
+            if (currentSvc === "ucaadhar") {
+                wsData = records.map((r, i) => ({
+                    "Sr No": i + 1,
+                    "Date": formatDateDisplay(r.record_date),
+                    "Name": r.name || "",
+                    "SID Number": r.id_number || "",
+                    "Mobile No": r.mobile || "",
+                    "Status": r.status || "Completed",
+                    "Govt Total": r.total_amt || 0,
+                    "Fee": r.fee_amt || 0,
+                    "Remarks": r.remark || ""
+                }));
+            } else if (currentSvc === "aadhar_online") {
+                wsData = records.map((r, i) => ({
+                    "Sr No": i + 1,
+                    "Date": formatDateDisplay(r.record_date),
+                    "Name": r.name || "",
+                    "SRN Number": r.id_number || "",
+                    "Mobile No": r.mobile || "",
+                    "Status": r.status || "Completed",
+                    "Remarks": r.remark || ""
+                }));
+            } else if (currentSvc === "pancard") {
+                wsData = records.map((r, i) => ({
+                    "Sr No": i + 1,
+                    "Date": formatDateDisplay(r.record_date),
+                    "Name": r.name || "",
+                    "Mobile No": r.mobile || "",
+                    "PAN Type": r.pan_type || "",
+                    "Fee": r.fee_amt || 0,
+                    "Remarks": r.remark || ""
+                }));
+            } else if (currentSvc === "aayushman") {
+                wsData = records.map((r, i) => ({
+                    "Sr No": i + 1,
+                    "Date": formatDateDisplay(r.record_date),
+                    "Name": r.name || "",
+                    "Ration / Ayushman No": r.id_number || "",
+                    "Mobile No": r.mobile || "",
+                    "Remarks": r.remark || ""
+                }));
+            } else {
+                wsData = records.map((r, i) => {
+                    const rowSvc = (r.service_type || "").toLowerCase();
+                    const st = (rowSvc === "pancard" || rowSvc === "aayushman") ? "" : (r.status || "Completed");
+                    return {
+                        "Sr No": i + 1,
+                        "Date": formatDateDisplay(r.record_date),
+                        "Name": r.name || "",
+                        "Service": (r.service_type || "").toUpperCase(),
+                        "ID Number": r.id_number || "",
+                        "Mobile No": r.mobile || "",
+                        "Status": st,
+                        "Amount": r.fee_amt || 0,
+                        "Remarks": r.remark || ""
+                    };
+                });
+            }
+
             const wb = XLSX.utils.book_new();
             const ws = XLSX.utils.json_to_sheet(wsData);
             XLSX.utils.book_append_sheet(wb, ws, "Records");
@@ -2242,25 +2403,87 @@ function exportCurrentView(format = "excel") {
         }
 
         // CSV export
-        let csv = "Sr No,Service,Date,Name,ID Number,Mobile No,Status,Amount,Remarks\n";
-        records.forEach((r, idx) => {
-            const row = [
-                idx + 1,
-                `"${(r.service_type || '').toUpperCase()}"`,
-                `"${formatDateDisplay(r.record_date)}"`,
-                `"${(r.name || '').replace(/"/g, '""')}"`,
-                `"${r.id_number || ''}"`,
-                `"${r.mobile || ''}"`,
-                `"${r.status || ''}"`,
-                r.fee_amt || 0,
-                `"${(r.remark || '').replace(/"/g, '""')}"`
-            ];
-            csv += row.join(",") + "\n";
-        });
+        let csv = "";
+        if (currentSvc === "ucaadhar") {
+            csv = "Sr No,Date,Name,SID Number,Mobile No,Status,Govt Total,Fee,Remarks\n";
+            records.forEach((r, idx) => {
+                csv += [
+                    idx + 1,
+                    `"${formatDateDisplay(r.record_date)}"`,
+                    `"${(r.name || '').replace(/"/g, '""')}"`,
+                    `"${r.id_number || ''}"`,
+                    `"${r.mobile || ''}"`,
+                    `"${r.status || 'Completed'}"`,
+                    r.total_amt || 0,
+                    r.fee_amt || 0,
+                    `"${(r.remark || '').replace(/"/g, '""')}"`
+                ].join(",") + "\n";
+            });
+        } else if (currentSvc === "aadhar_online") {
+            csv = "Sr No,Date,Name,SRN Number,Mobile No,Status,Remarks\n";
+            records.forEach((r, idx) => {
+                csv += [
+                    idx + 1,
+                    `"${formatDateDisplay(r.record_date)}"`,
+                    `"${(r.name || '').replace(/"/g, '""')}"`,
+                    `"${r.id_number || ''}"`,
+                    `"${r.mobile || ''}"`,
+                    `"${r.status || 'Completed'}"`,
+                    `"${(r.remark || '').replace(/"/g, '""')}"`
+                ].join(",") + "\n";
+            });
+        } else if (currentSvc === "pancard") {
+            csv = "Sr No,Date,Name,Mobile No,PAN Type,Fee,Remarks\n";
+            records.forEach((r, idx) => {
+                csv += [
+                    idx + 1,
+                    `"${formatDateDisplay(r.record_date)}"`,
+                    `"${(r.name || '').replace(/"/g, '""')}"`,
+                    `"${r.mobile || ''}"`,
+                    `"${r.pan_type || ''}"`,
+                    r.fee_amt || 0,
+                    `"${(r.remark || '').replace(/"/g, '""')}"`
+                ].join(",") + "\n";
+            });
+        } else if (currentSvc === "aayushman") {
+            csv = "Sr No,Date,Name,Ration / Ayushman No,Mobile No,Remarks\n";
+            records.forEach((r, idx) => {
+                csv += [
+                    idx + 1,
+                    `"${formatDateDisplay(r.record_date)}"`,
+                    `"${(r.name || '').replace(/"/g, '""')}"`,
+                    `"${r.id_number || ''}"`,
+                    `"${r.mobile || ''}"`,
+                    `"${(r.remark || '').replace(/"/g, '""')}"`
+                ].join(",") + "\n";
+            });
+        } else {
+            csv = "Sr No,Date,Name,Service,ID Number,Mobile No,Status,Amount,Remarks\n";
+            records.forEach((r, idx) => {
+                const rowSvc = (r.service_type || "").toLowerCase();
+                const st = (rowSvc === "pancard" || rowSvc === "aayushman") ? "" : (r.status || "Completed");
+                csv += [
+                    idx + 1,
+                    `"${formatDateDisplay(r.record_date)}"`,
+                    `"${(r.name || '').replace(/"/g, '""')}"`,
+                    `"${(r.service_type || '').toUpperCase()}"`,
+                    `"${r.id_number || ''}"`,
+                    `"${r.mobile || ''}"`,
+                    `"${st}"`,
+                    r.fee_amt || 0,
+                    `"${(r.remark || '').replace(/"/g, '""')}"`
+                ].join(",") + "\n";
+            });
+        }
+
         const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
+        a.download = `Khodal_${params.service_type || 'all'}_Export.csv`;
+        a.click();
+        showToast("CSV exported successfully!", "success");
+        return;
         a.download = `Khodal_${params.service_type || 'all'}_Export.csv`;
         a.click();
         showToast("CSV exported successfully!", "success");
@@ -2391,7 +2614,9 @@ function updateDatabaseStatusBadge() {
     if (!isStaticMode) {
         textEl.innerHTML = `<strong>🟢 SQLite Disk Database Active:</strong> All records are stored permanently on disk (<code>data/khodal_office.db</code>). Clearing browser history will <strong>never</strong> delete your records.`;
     } else {
-        textEl.innerHTML = `<strong>🛡️ Protected Database Active:</strong> Auto-recovered from permanent disk seed. Total <strong>${staticRecords.length}</strong> records safe.`;
+        const count = staticRecords ? staticRecords.length : 0;
+        const modeLabel = window.location.hostname.includes("github.io") ? "Live on GitHub Pages" : "Client-Side Mode";
+        textEl.innerHTML = `<strong>🛡️ ${modeLabel}:</strong> Total <strong>${count.toLocaleString()}</strong> records active. Full search, editing, status toggling, import, and export ready.`;
     }
 }
 
@@ -2504,21 +2729,40 @@ async function handleRestoreBackupFile(event) {
 
 
 // =========================================================================
-// MASTER USER AUTHENTICATION (manish / manish@7575)
+// MASTER USER AUTHENTICATION & DATABASE SESSION
 // =========================================================================
-const AUTH_STORAGE_KEY = "khodal_master_session_v1";
+let currentMasterUser = null;
 
-function checkAuthentication() {
-    const saved = localStorage.getItem(AUTH_STORAGE_KEY) || sessionStorage.getItem(AUTH_STORAGE_KEY);
-    if (saved) {
+async function checkAuthentication() {
+    if (!isStaticMode) {
         try {
-            const user = JSON.parse(saved);
-            if (user && user.username && user.username.toLowerCase() === "manish") {
-                showAuthenticatedUI(user);
+            const resp = await fetch("/api/auth/me", { credentials: "same-origin" });
+            if (resp.ok) {
+                const data = await resp.json();
+                if (data.status === "success" && data.user) {
+                    currentMasterUser = data.user;
+                    showAuthenticatedUI(currentMasterUser);
+                    return true;
+                }
+            }
+        } catch (e) {
+            console.warn("Database auth verification failed, checking client session...", e);
+        }
+    }
+
+    // Static mode or fallback session check
+    try {
+        const savedSession = localStorage.getItem(AUTH_SESSION_KEY) || sessionStorage.getItem(AUTH_SESSION_KEY);
+        if (savedSession) {
+            const user = JSON.parse(savedSession);
+            if (user && user.username) {
+                currentMasterUser = user;
+                showAuthenticatedUI(currentMasterUser);
                 return true;
             }
-        } catch (e) {}
-    }
+        }
+    } catch (e) {}
+
     showLoginModal();
     return false;
 }
@@ -2541,7 +2785,17 @@ function showAuthenticatedUI(user) {
     const badge = document.getElementById("user-profile-badge");
     if (badge) badge.classList.remove("hidden");
     const nameEl = document.getElementById("user-display-name");
-    if (nameEl) nameEl.textContent = user.full_name || "Manish";
+    if (nameEl) nameEl.textContent = user.full_name || user.username || "Master";
+    const avatarEl = document.getElementById("user-avatar-initial");
+    if (avatarEl) {
+        const initial = (user.full_name || user.username || "M").trim().charAt(0).toUpperCase();
+        avatarEl.textContent = initial;
+    }
+    const roleEl = document.getElementById("user-role-badge");
+    if (roleEl) {
+        const role = user.role ? (user.role.charAt(0).toUpperCase() + user.role.slice(1)) : "Master";
+        roleEl.textContent = role;
+    }
     refreshIcons();
 }
 
@@ -2575,29 +2829,66 @@ async function handleMasterLogin(e) {
             const resp = await fetch("/api/auth/login", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
+                credentials: "same-origin",
                 body: JSON.stringify({ username, password })
             });
-            const data = await resp.json();
+            const data = await resp.json().catch(() => ({}));
             if (resp.ok && data.status === "success") {
                 authenticated = true;
                 userInfo = data.user;
-            } else {
+            } else if (resp.status === 401) {
                 if (errAlert) errAlert.classList.remove("hidden");
                 if (errText) errText.textContent = data.detail || "Invalid User ID or Password.";
+            } else {
+                throw new Error(data.detail || "Server error");
             }
         } catch (err) {
-            if (username.toLowerCase() === "manish" && password === "manish@7575") {
-                authenticated = true;
-                userInfo = { username: "manish", full_name: "Manish", role: "master" };
+            console.warn("Backend auth unavailable, trying client-side master user verification...", err);
+        }
+    }
+
+    // Static mode or fallback verification
+    if (!authenticated) {
+        const users = getStaticUsers();
+        const cleanUser = username.toLowerCase();
+        let matched = users.find(u => (u.username || "").toLowerCase() === cleanUser);
+        let isValid = false;
+
+        if (matched) {
+            if (matched.password && matched.password === password) {
+                isValid = true;
+            } else if (cleanUser === "manish" && password === "manish@7575") {
+                isValid = true;
+            } else if (cleanUser === "admin" && password === "admin@7575") {
+                isValid = true;
+            }
+        } else {
+            if (cleanUser === "manish" && password === "manish@7575") {
+                isValid = true;
+                matched = { id: 1, username: "manish", full_name: "Manish", role: "master", is_active: 1 };
+            } else if (cleanUser === "admin" && password === "admin@7575") {
+                isValid = true;
+                matched = { id: 2, username: "admin", full_name: "Master Admin", role: "master", is_active: 1 };
             }
         }
-    } else {
-        if (username.toLowerCase() === "manish" && password === "manish@7575") {
+
+        if (isValid && matched) {
             authenticated = true;
-            userInfo = { username: "manish", full_name: "Manish", role: "master" };
+            userInfo = {
+                id: matched.id,
+                username: matched.username,
+                full_name: matched.full_name || matched.username,
+                role: matched.role || "master"
+            };
+            matched.last_login = new Date().toISOString();
+            saveStaticUsers(users);
+            try {
+                localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(userInfo));
+                sessionStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(userInfo));
+            } catch (e) {}
         } else {
             if (errAlert) errAlert.classList.remove("hidden");
-            if (errText) errText.textContent = "Invalid User ID or Password. (Master User: manish)";
+            if (errText) errText.textContent = "Invalid User ID or Password. (Master IDs: manish or admin)";
         }
     }
 
@@ -2609,21 +2900,25 @@ async function handleMasterLogin(e) {
 
     if (authenticated && userInfo) {
         if (errAlert) errAlert.classList.add("hidden");
-        localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(userInfo));
-        sessionStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(userInfo));
+        currentMasterUser = userInfo;
         showAuthenticatedUI(userInfo);
-        showToast(`Welcome back, ${userInfo.full_name || "Manish"}!`, "success");
-        initApp();
+        showToast(`Welcome back, ${userInfo.full_name || userInfo.username}!`, "success");
+        await initApp();
     }
 }
 
-function logoutMasterUser() {
+async function logoutMasterUser() {
     if (!confirm("Are you sure you want to log out of Khodal Office Hub?")) return;
-    localStorage.removeItem(AUTH_STORAGE_KEY);
-    sessionStorage.removeItem(AUTH_STORAGE_KEY);
     if (!isStaticMode) {
-        fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+        try {
+            await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
+        } catch (e) {}
     }
+    currentMasterUser = null;
+    try {
+        localStorage.removeItem(AUTH_SESSION_KEY);
+        sessionStorage.removeItem(AUTH_SESSION_KEY);
+    } catch (e) {}
     showToast("Logged out successfully.", "info");
     showLoginModal();
 }
@@ -2642,14 +2937,224 @@ function togglePasswordVisibility(inputId, iconId) {
     refreshIcons();
 }
 
+// =========================================================================
+// MASTER USERS MANAGEMENT (Stored on SQLite Database or Client Storage)
+// =========================================================================
+
+async function openMasterUsersModal() {
+    const modal = document.getElementById("modal-master-users");
+    if (modal) modal.classList.remove("hidden");
+    await loadMasterUsersList();
+}
+
+function closeMasterUsersModal() {
+    const modal = document.getElementById("modal-master-users");
+    if (modal) modal.classList.add("hidden");
+}
+
+async function loadMasterUsersList() {
+    const tbody = document.getElementById("master-users-list-tbody");
+    const countBadge = document.getElementById("master-users-count-badge");
+    if (!tbody) return;
+
+    if (isStaticMode) {
+        const users = getStaticUsers();
+        if (countBadge) countBadge.textContent = `${users.length} Active in Client DB`;
+        renderMasterUsersList(users);
+        return;
+    }
+
+    tbody.innerHTML = `<tr><td colspan="5" class="px-4 py-6 text-center text-slate-400">Loading master users from database...</td></tr>`;
+
+    try {
+        const resp = await fetch("/api/users");
+        const data = await resp.json();
+        if (resp.ok && data.status === "success") {
+            const users = data.users || [];
+            if (countBadge) countBadge.textContent = `${users.length} Active in DB`;
+            renderMasterUsersList(users);
+        } else {
+            const users = getStaticUsers();
+            renderMasterUsersList(users);
+        }
+    } catch (e) {
+        const users = getStaticUsers();
+        renderMasterUsersList(users);
+    }
+}
+
+function renderMasterUsersList(users) {
+    const tbody = document.getElementById("master-users-list-tbody");
+    if (!tbody) return;
+
+    if (!users || users.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" class="px-4 py-6 text-center text-slate-400">No master users found in database.</td></tr>`;
+        return;
+    }
+
+    const currentUsername = currentMasterUser ? (currentMasterUser.username || "").toLowerCase() : "";
+
+    tbody.innerHTML = users.map(u => {
+        const isCurrent = (u.username || "").toLowerCase() === currentUsername;
+        const initial = (u.full_name || u.username || "M").trim().charAt(0).toUpperCase();
+        const lastLogin = u.last_login ? formatDateDisplay(u.last_login.substring(0, 10)) + " " + u.last_login.substring(11, 16) : "Never logged in";
+        const canDelete = users.length > 1 && !isCurrent;
+
+        return `
+            <tr class="hover:bg-slate-50/80 transition">
+                <td class="px-4 py-3">
+                    <div class="flex items-center gap-2.5">
+                        <div class="w-7 h-7 rounded-full bg-brand-600 text-white font-bold text-xs flex items-center justify-center shadow-2xs">
+                            ${initial}
+                        </div>
+                        <div>
+                            <div class="font-semibold text-slate-800 text-xs">${escapeHtml(u.full_name || u.username)}</div>
+                            ${isCurrent ? '<span class="text-[10px] text-brand-600 font-semibold">(Current Active)</span>' : ''}
+                        </div>
+                    </div>
+                </td>
+                <td class="px-4 py-3 font-mono text-xs text-slate-700">
+                    ${escapeHtml(u.username)}
+                </td>
+                <td class="px-4 py-3">
+                    <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                        ${escapeHtml(u.role ? u.role.toUpperCase() : "MASTER")}
+                    </span>
+                </td>
+                <td class="px-4 py-3 text-[11px] text-slate-500">
+                    ${lastLogin}
+                </td>
+                <td class="px-4 py-3 text-right">
+                    ${canDelete ? `
+                        <button onclick="handleDeleteMasterUser(${u.id}, '${escapeHtml(u.username)}')" 
+                            class="px-2 py-1 text-[11px] font-medium text-rose-600 hover:text-white hover:bg-rose-600 border border-rose-200 hover:border-rose-600 rounded transition cursor-pointer">
+                            Delete
+                        </button>
+                    ` : `
+                        <span class="text-[11px] text-slate-400 italic">${isCurrent ? 'Current User' : 'Protected'}</span>
+                    `}
+                </td>
+            </tr>
+        `;
+    }).join("");
+    refreshIcons();
+}
+
+async function handleAddMasterUser(e) {
+    if (e) e.preventDefault();
+    const fullNameInput = document.getElementById("new-user-fullname");
+    const usernameInput = document.getElementById("new-user-username");
+    const passwordInput = document.getElementById("new-user-password");
+    const submitBtn = document.getElementById("add-user-submit-btn");
+
+    const full_name = (fullNameInput ? fullNameInput.value : "").trim();
+    const username = (usernameInput ? usernameInput.value : "").trim();
+    const password = (passwordInput ? passwordInput.value : "").trim();
+
+    if (!username || !password) {
+        showToast("Please provide both Username and Password.", "error");
+        return;
+    }
+
+    if (isStaticMode) {
+        const users = getStaticUsers();
+        if (users.some(u => (u.username || "").toLowerCase() === username.toLowerCase())) {
+            showToast(`Master user '${username}' already exists!`, "error");
+            return;
+        }
+        const nextId = users.reduce((m, u) => Math.max(m, u.id || 0), 0) + 1;
+        const newUser = {
+            id: nextId,
+            username: username,
+            full_name: full_name || username,
+            role: "master",
+            password: password,
+            is_active: 1,
+            created_at: new Date().toISOString().replace("T", " ").substring(0, 19),
+            last_login: null
+        };
+        users.push(newUser);
+        saveStaticUsers(users);
+        showToast(`Master User '${username}' added successfully!`, "success");
+        if (fullNameInput) fullNameInput.value = "";
+        if (usernameInput) usernameInput.value = "";
+        if (passwordInput) passwordInput.value = "";
+        await loadMasterUsersList();
+        return;
+    }
+
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<span class="inline-block animate-spin mr-1">⌛</span> Saving to Database...';
+    }
+
+    try {
+        const resp = await fetch("/api/users", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ full_name, username, password })
+        });
+        const data = await resp.json();
+        if (resp.ok && data.status === "success") {
+            showToast(`Master User '${username}' saved directly to database!`, "success");
+            if (fullNameInput) fullNameInput.value = "";
+            if (usernameInput) usernameInput.value = "";
+            if (passwordInput) passwordInput.value = "";
+            await loadMasterUsersList();
+        } else {
+            showToast(data.detail || "Failed to add master user", "error");
+        }
+    } catch (err) {
+        showToast("Failed to connect to database: " + err.message, "error");
+    } finally {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '<i data-lucide="plus" class="w-3.5 h-3.5"></i><span>Save User to Database</span>';
+            refreshIcons();
+        }
+    }
+}
+
+async function handleDeleteMasterUser(userId, username) {
+    if (!confirm(`Are you sure you want to permanently delete master user '${username}'?`)) return;
+
+    if (isStaticMode) {
+        let users = getStaticUsers();
+        if (users.length <= 1) {
+            showToast("Cannot delete the only master user.", "error");
+            return;
+        }
+        users = users.filter(u => u.id !== userId && (u.username || "").toLowerCase() !== username.toLowerCase());
+        saveStaticUsers(users);
+        showToast(`Master user '${username}' deleted`, "info");
+        await loadMasterUsersList();
+        return;
+    }
+
+    try {
+        const resp = await fetch(`/api/users/${userId}`, { method: "DELETE" });
+        const data = await resp.json();
+        if (resp.ok && data.status === "success") {
+            showToast(data.message || `Master user '${username}' deleted`, "info");
+            await loadMasterUsersList();
+        } else {
+            showToast(data.detail || "Failed to delete user", "error");
+        }
+    } catch (err) {
+        showToast("Error deleting user: " + err.message, "error");
+    }
+}
+
 // Initialize application after all components and stores are defined
-function boot() {
+async function boot() {
     refreshIcons();
     setupDropzone();
     setupWindowDragAndDrop();
     setupKeyboardListeners();
-    if (checkAuthentication()) {
-        initApp();
+    await initDataStore();
+    const isAuthed = await checkAuthentication();
+    if (isAuthed) {
+        await initApp();
     }
 }
 

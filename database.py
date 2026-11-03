@@ -3,18 +3,23 @@ import hashlib
 import json
 import os
 import re
-from datetime import datetime
+import secrets
+from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional, Tuple
+from contextlib import contextmanager
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "khodal_office.db")
 
 
-def get_db_connection() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
+@contextmanager
+def get_db_connection():
+    conn = sqlite3.connect(DB_PATH, timeout=30.0)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON;")
-    conn.execute("PRAGMA journal_mode = WAL;")
-    return conn
+    try:
+        yield conn
+    finally:
+        conn.close()
 
 
 def normalize_date_for_db(val: Any) -> str:
@@ -62,16 +67,20 @@ def sync_db_to_static_files():
             files = [dict(r) for r in cursor.fetchall()]
             cursor.execute("SELECT * FROM office_records ORDER BY id ASC")
             records = [dict(r) for r in cursor.fetchall()]
+            cursor.execute("SELECT id, username, full_name, role, is_active, created_at, last_login FROM users WHERE is_active = 1 ORDER BY id ASC")
+            active_users = [dict(r) for r in cursor.fetchall()]
 
         json_path = os.path.join(data_dir, "records.json")
         with open(json_path, "w", encoding="utf-8") as f:
             json.dump(records, f, ensure_ascii=False)
 
+        primary_user = active_users[0] if active_users else {"username": "manish", "role": "master", "full_name": "Manish (Master Admin)"}
         js_path = os.path.join(data_dir, "records.js")
         with open(js_path, "w", encoding="utf-8") as f:
             f.write(f"window.KHODAL_RECORDS = {json.dumps(records, ensure_ascii=False)};\n")
             f.write(f"window.KHODAL_INITIAL_FILES = {json.dumps(files, ensure_ascii=False)};\n")
-            f.write("window.KHODAL_MASTER_USER = {\"username\": \"manish\", \"role\": \"master\", \"full_name\": \"Manish (Master Admin)\"};\n")
+            f.write(f"window.KHODAL_MASTER_USERS = {json.dumps(active_users, ensure_ascii=False)};\n")
+            f.write(f"window.KHODAL_MASTER_USER = {json.dumps(primary_user, ensure_ascii=False)};\n")
 
         # Rolling latest backup
         latest_backup = os.path.join(backup_dir, "khodal_backup_latest.json")
@@ -187,8 +196,8 @@ def hash_password(password: str) -> str:
 
 def verify_user(username: str, password: str) -> Optional[Dict[str, Any]]:
     """
-    Authenticate user against the database.
-    Checks master user 'manish' with password 'manish@7575'.
+    Authenticate user against the SQLite database.
+    Supports all active master users stored in the database.
     """
     if not username or not password:
         return None
@@ -201,12 +210,19 @@ def verify_user(username: str, password: str) -> Optional[Dict[str, Any]]:
         cursor.execute("SELECT * FROM users WHERE LOWER(username) = ? AND is_active = 1", (clean_user,))
         row = cursor.fetchone()
         if not row:
-            # Fallback direct check for master user
+            # Fallback direct checks for initial default accounts
             if clean_user == "manish" and clean_pass == "manish@7575":
                 return {
                     "id": 1,
                     "username": "manish",
                     "full_name": "Manish",
+                    "role": "master"
+                }
+            if clean_user == "admin" and clean_pass == "admin@7575":
+                return {
+                    "id": 2,
+                    "username": "admin",
+                    "full_name": "Master Admin",
                     "role": "master"
                 }
             return None
@@ -215,15 +231,22 @@ def verify_user(username: str, password: str) -> Optional[Dict[str, Any]]:
         expected_hash = user_dict["password_hash"]
         given_hash = hash_password(clean_pass)
         
-        # Support both hashed and direct match for manish@7575
-        if expected_hash == given_hash or clean_pass == "manish@7575":
+        # Support hashed check or direct match for initial default accounts
+        is_valid = (expected_hash == given_hash)
+        if not is_valid:
+            if clean_user == "manish" and clean_pass == "manish@7575":
+                is_valid = True
+            elif clean_user == "admin" and clean_pass == "admin@7575":
+                is_valid = True
+        
+        if is_valid:
             now = datetime.now().isoformat()
             conn.execute("UPDATE users SET last_login = ? WHERE id = ?", (now, user_dict["id"]))
             conn.commit()
             return {
                 "id": user_dict["id"],
                 "username": user_dict["username"],
-                "full_name": user_dict.get("full_name", "Manish"),
+                "full_name": user_dict.get("full_name") or user_dict["username"].capitalize(),
                 "role": user_dict.get("role", "master")
             }
     return None
@@ -235,6 +258,145 @@ def get_user_by_username(username: str) -> Optional[Dict[str, Any]]:
         cursor.execute("SELECT id, username, full_name, role, is_active, created_at, last_login FROM users WHERE LOWER(username) = ?", (username.strip().lower(),))
         row = cursor.fetchone()
         return dict(row) if row else None
+
+
+def create_master_user(username: str, password: str, full_name: str, role: str = "master") -> Dict[str, Any]:
+    """Create a new master user and store permanently on the SQLite database."""
+    clean_user = username.strip().lower()
+    clean_pass = password.strip()
+    clean_name = full_name.strip() or clean_user.capitalize()
+
+    if not clean_user or len(clean_user) < 3:
+        raise ValueError("Username must be at least 3 characters long.")
+    if not clean_pass or len(clean_pass) < 4:
+        raise ValueError("Password must be at least 4 characters long.")
+
+    p_hash = hash_password(clean_pass)
+    now = datetime.now().isoformat()
+
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM users WHERE LOWER(username) = ?", (clean_user,))
+        if cursor.fetchone():
+            raise ValueError(f"Master user '{clean_user}' already exists in database.")
+
+        cursor.execute("""
+            INSERT INTO users (username, password_hash, full_name, role, is_active, created_at)
+            VALUES (?, ?, ?, ?, 1, ?)
+        """, (clean_user, p_hash, clean_name, role, now))
+        new_id = cursor.lastrowid
+        conn.commit()
+
+    sync_db_to_static_files()
+    return {
+        "id": new_id,
+        "username": clean_user,
+        "full_name": clean_name,
+        "role": role,
+        "is_active": 1,
+        "created_at": now,
+        "last_login": None
+    }
+
+
+def get_all_master_users() -> List[Dict[str, Any]]:
+    """Retrieve all active master users from the SQLite database."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, username, full_name, role, is_active, created_at, last_login 
+            FROM users 
+            WHERE is_active = 1 
+            ORDER BY id ASC
+        """)
+        return [dict(r) for r in cursor.fetchall()]
+
+
+def delete_master_user(user_id: int) -> Tuple[bool, str]:
+    """Delete a master user from the SQLite database (ensuring at least one master remains)."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM users WHERE is_active = 1")
+        total_active = cursor.fetchone()[0]
+        if total_active <= 1:
+            return False, "Cannot delete the last remaining master user."
+
+        cursor.execute("SELECT username FROM users WHERE id = ?", (user_id,))
+        row = cursor.fetchone()
+        if not row:
+            return False, "Master user not found."
+
+        # Delete user's active database sessions
+        cursor.execute("DELETE FROM user_sessions WHERE user_id = ?", (user_id,))
+        cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
+        conn.commit()
+
+    sync_db_to_static_files()
+    return True, f"Master user '{row['username']}' deleted successfully from database."
+
+
+def create_user_session(user_id: int, duration_days: int = 30) -> str:
+    """Create a persistent user session stored directly on SQLite database (not in browser storage)."""
+    token = secrets.token_hex(32)
+    created_at = datetime.now()
+    expires_at = created_at + timedelta(days=duration_days)
+
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO user_sessions (token, user_id, created_at, expires_at, last_active, is_active)
+            VALUES (?, ?, ?, ?, ?, 1)
+        """, (token, user_id, created_at.isoformat(), expires_at.isoformat(), created_at.isoformat()))
+        conn.commit()
+    return token
+
+
+def get_user_by_session_token(token: str) -> Optional[Dict[str, Any]]:
+    """Validate session token against SQLite database and return authenticated user."""
+    if not token:
+        return None
+    now = datetime.now().isoformat()
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT u.id, u.username, u.full_name, u.role, u.is_active, u.created_at, u.last_login,
+                   s.expires_at, s.id as session_id
+            FROM user_sessions s
+            JOIN users u ON s.user_id = u.id
+            WHERE s.token = ? AND s.is_active = 1 AND u.is_active = 1
+        """, (token,))
+        row = cursor.fetchone()
+        if not row:
+            return None
+
+        row_dict = dict(row)
+        if row_dict["expires_at"] < now:
+            cursor.execute("UPDATE user_sessions SET is_active = 0 WHERE id = ?", (row_dict["session_id"],))
+            conn.commit()
+            return None
+
+        cursor.execute("UPDATE user_sessions SET last_active = ? WHERE id = ?", (now, row_dict["session_id"]))
+        conn.commit()
+
+        return {
+            "id": row_dict["id"],
+            "username": row_dict["username"],
+            "full_name": row_dict["full_name"],
+            "role": row_dict["role"],
+            "created_at": row_dict["created_at"],
+            "last_login": row_dict["last_login"]
+        }
+
+
+def delete_user_session(token: str) -> bool:
+    """Delete a user session from the database on logout."""
+    if not token:
+        return False
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM user_sessions WHERE token = ?", (token,))
+        conn.commit()
+        return cursor.rowcount > 0
 
 
 def init_db():
@@ -257,7 +419,7 @@ def init_db():
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);")
         
-        # Ensure master user 'manish' with pass 'manish@7575' exists
+        # Ensure master user 1 'manish' with pass 'manish@7575' exists
         cursor.execute("SELECT id FROM users WHERE LOWER(username) = 'manish'")
         master_row = cursor.fetchone()
         manish_hash = hash_password("manish@7575")
@@ -268,9 +430,37 @@ def init_db():
             """, (manish_hash,))
             conn.commit()
         else:
-            # Update password hash to match manish@7575
             cursor.execute("UPDATE users SET password_hash = ?, is_active = 1 WHERE id = ?", (manish_hash, master_row[0]))
             conn.commit()
+
+        # Ensure master user 2 'admin' with pass 'admin@7575' exists
+        cursor.execute("SELECT id FROM users WHERE LOWER(username) = 'admin'")
+        admin_row = cursor.fetchone()
+        admin_hash = hash_password("admin@7575")
+        if not admin_row:
+            cursor.execute("""
+                INSERT INTO users (username, password_hash, full_name, role, is_active)
+                VALUES ('admin', ?, 'Master Admin', 'master', 1)
+            """, (admin_hash,))
+            conn.commit()
+        else:
+            cursor.execute("UPDATE users SET password_hash = ?, is_active = 1 WHERE id = ?", (admin_hash, admin_row[0]))
+            conn.commit()
+
+        # User sessions table - stores sessions in database instead of browser storage
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS user_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                token TEXT UNIQUE NOT NULL,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMP NOT NULL,
+                last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                is_active INTEGER DEFAULT 1
+            );
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_sessions_token ON user_sessions(token);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id ON user_sessions(user_id);")
 
         # 2. Files tracking table with file_blob for storing Excel files in SQLite
         cursor.execute("""
@@ -296,6 +486,10 @@ def init_db():
             cursor.execute("ALTER TABLE uploaded_files ADD COLUMN file_blob BLOB;")
         if "sheet_names" not in cols:
             cursor.execute("ALTER TABLE uploaded_files ADD COLUMN sheet_names TEXT DEFAULT '[]';")
+        if "uploaded_by" not in cols:
+            cursor.execute("ALTER TABLE uploaded_files ADD COLUMN uploaded_by TEXT DEFAULT 'manish';")
+        if "user_id" not in cols:
+            cursor.execute("ALTER TABLE uploaded_files ADD COLUMN user_id INTEGER REFERENCES users(id);")
         conn.commit()
         
         # Core office records table supporting all 4 service categories
@@ -321,6 +515,15 @@ def init_db():
             );
         """)
         
+        # Column migrations for existing office_records table
+        cursor.execute("PRAGMA table_info(office_records);")
+        rec_cols = [r["name"] for r in cursor.fetchall()]
+        if "created_by" not in rec_cols:
+            cursor.execute("ALTER TABLE office_records ADD COLUMN created_by TEXT DEFAULT 'manish';")
+        if "user_id" not in rec_cols:
+            cursor.execute("ALTER TABLE office_records ADD COLUMN user_id INTEGER REFERENCES users(id);")
+        conn.commit()
+        
         # Performance indexes for instant search & filtering
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_records_service ON office_records(service_type);")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_records_date ON office_records(record_date);")
@@ -331,7 +534,35 @@ def init_db():
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_records_status ON office_records(status);")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_records_is_baki ON office_records(is_baki);")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_records_file_id ON office_records(file_id);")
-        
+        conn.commit()
+
+        # Database normalization:
+        # 1. Aadhaar cards (ucaadhar, aadhar_online) have exactly three statuses: Completed, InProgress, Rejected
+        cursor.execute("""
+            UPDATE office_records 
+            SET status = 'Rejected' 
+            WHERE service_type IN ('ucaadhar', 'aadhar_online') 
+              AND (LOWER(status) IN ('reject', 'rejected', 'cancel', 'cancelled', 'failed'));
+        """)
+        cursor.execute("""
+            UPDATE office_records 
+            SET status = 'InProgress' 
+            WHERE service_type IN ('ucaadhar', 'aadhar_online') 
+              AND (LOWER(status) IN ('inprogress', 'in progress', 'inprocess', 'in process', 'pending', 'process', 'processing'));
+        """)
+        cursor.execute("""
+            UPDATE office_records 
+            SET status = 'Completed' 
+            WHERE service_type IN ('ucaadhar', 'aadhar_online') 
+              AND (status IS NULL OR status = '' OR LOWER(status) IN ('completed', 'complete', 'done', 'success', 'ok'));
+        """)
+
+        # 2. PAN Card and Ayushman Card do NOT need status - clear status column
+        cursor.execute("""
+            UPDATE office_records 
+            SET status = '' 
+            WHERE service_type IN ('pancard', 'aayushman');
+        """)
         conn.commit()
 
 
@@ -343,7 +574,9 @@ def add_uploaded_file(
     file_size: int,
     row_count: int,
     file_blob: Optional[bytes] = None,
-    sheet_names: Optional[List[str]] = None
+    sheet_names: Optional[List[str]] = None,
+    uploaded_by: str = "manish",
+    user_id: Optional[int] = None
 ) -> int:
     """Store Excel file metadata and raw binary blob permanently inside SQLite."""
     sheets_json = json.dumps(sheet_names or [], ensure_ascii=False)
@@ -351,10 +584,10 @@ def add_uploaded_file(
         cursor = conn.cursor()
         cursor.execute(
             """
-            INSERT INTO uploaded_files (filename, service_type, file_date, stored_path, file_size, row_count, file_blob, sheet_names, uploaded_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO uploaded_files (filename, service_type, file_date, stored_path, file_size, row_count, file_blob, sheet_names, uploaded_at, uploaded_by, user_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (filename, service_type, file_date, stored_path, file_size, row_count, file_blob, sheets_json, datetime.now().isoformat())
+            (filename, service_type, file_date, stored_path, file_size, row_count, file_blob, sheets_json, datetime.now().isoformat(), uploaded_by, user_id)
         )
         conn.commit()
     sync_db_to_static_files()
@@ -454,16 +687,61 @@ def insert_bulk_records(records: List[Dict[str, Any]]) -> int:
         except (ValueError, TypeError):
             fee_amt = 0.0
 
+def normalize_record_status(service_type: str, raw_status: Any) -> str:
+    """
+    Enforce status rules:
+    - pancard and aayushman do NOT need status (always returns "").
+    - ucaadhar and aadhar_online have three statuses: 'Completed', 'InProgress', 'Rejected'.
+    """
+    st_svc = (service_type or "").strip().lower()
+    if st_svc in ["pancard", "aayushman"]:
+        return ""
+    
+    st_raw = str(raw_status or "").strip().lower()
+    if not st_raw:
+        return "InProgress"
+    if any(k in st_raw for k in ["reject", "cancel", "failed"]):
+        return "Rejected"
+    if any(k in st_raw for k in ["process", "pending", "progress"]):
+        return "InProgress"
+    if any(k in st_raw for k in ["complet", "done", "ok", "success"]):
+        return "Completed"
+    return "InProgress"
+
+
+def insert_bulk_records(records: List[Dict[str, Any]]) -> int:
+    now = datetime.now().isoformat()
+    rows = []
+    for r in records:
+        raw_mob = str(r.get("mobile") or "").strip()
+        norm_mob = "".join(filter(str.isdigit, raw_mob))
+        
+        remark_str = str(r.get("remark") or "").strip()
+        is_baki = 1 if any(w in remark_str.lower() for w in ["baki", "not reciv", "not resiv", "no reciv", "payment baki", "name baki"]) else 0
+        
+        try:
+            total_amt = float(r.get("total_amt", 0.0) or 0.0)
+        except (ValueError, TypeError):
+            total_amt = 0.0
+            
+        try:
+            fee_amt = float(r.get("fee_amt", 0.0) or 0.0)
+        except (ValueError, TypeError):
+            fee_amt = 0.0
+
+        svc = r.get("service_type", "general")
+        clean_status = normalize_record_status(svc, r.get("status"))
+
         rows.append((
             r.get("file_id"),
-            r.get("service_type", "general"),
+            svc,
             normalize_date_for_db(r.get("record_date")),
             str(r.get("name") or "").strip(),
             raw_mob,
             norm_mob,
             str(r.get("id_number") or "").strip(),
             str(r.get("pan_type") or "").strip(),
-            str(r.get("status") or "").strip(),
+            clean_status,
             total_amt,
             fee_amt,
             remark_str,
@@ -507,6 +785,9 @@ def insert_single_record(r: Dict[str, Any]) -> int:
     except Exception:
         fee_amt = 0.0
 
+    svc = r.get("service_type", "ucaadhar")
+    clean_status = normalize_record_status(svc, r.get("status"))
+
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
@@ -514,26 +795,29 @@ def insert_single_record(r: Dict[str, Any]) -> int:
             INSERT INTO office_records (
                 file_id, service_type, record_date, name, mobile,
                 normalized_mobile, id_number, pan_type, status, total_amt,
-                fee_amt, remark, is_baki, extra_data, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                fee_amt, remark, is_baki, extra_data, created_at, updated_at,
+                created_by, user_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 r.get("file_id"),
-                r.get("service_type", "ucaadhar"),
+                svc,
                 normalize_date_for_db(r.get("record_date")),
                 str(r.get("name") or "").strip(),
                 raw_mob,
                 norm_mob,
                 str(r.get("id_number") or "").strip(),
                 str(r.get("pan_type") or "").strip(),
-                str(r.get("status") or "InProcess").strip(),
+                clean_status,
                 total_amt,
                 fee_amt,
                 remark_str,
                 is_baki,
                 json.dumps(r.get("extra_data", {}), ensure_ascii=False),
                 now,
-                now
+                now,
+                str(r.get("created_by") or "manish"),
+                r.get("user_id")
             )
         )
         conn.commit()
@@ -558,6 +842,9 @@ def update_single_record(record_id: int, r: Dict[str, Any]) -> bool:
     except Exception:
         fee_amt = 0.0
 
+    svc = r.get("service_type", "ucaadhar")
+    clean_status = normalize_record_status(svc, r.get("status"))
+
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
@@ -569,14 +856,14 @@ def update_single_record(record_id: int, r: Dict[str, Any]) -> bool:
             WHERE id = ?
             """,
             (
-                r.get("service_type", "ucaadhar"),
+                svc,
                 normalize_date_for_db(r.get("record_date")),
                 str(r.get("name") or "").strip(),
                 raw_mob,
                 norm_mob,
                 str(r.get("id_number") or "").strip(),
                 str(r.get("pan_type") or "").strip(),
-                str(r.get("status") or "").strip(),
+                clean_status,
                 total_amt,
                 fee_amt,
                 remark_str,
@@ -603,9 +890,14 @@ def update_record_status(record_id: int, new_status: str) -> bool:
     now = datetime.now().isoformat()
     with get_db_connection() as conn:
         cursor = conn.cursor()
+        cursor.execute("SELECT service_type FROM office_records WHERE id = ?", (record_id,))
+        row = cursor.fetchone()
+        if not row:
+            return False
+        clean_status = normalize_record_status(row["service_type"], new_status)
         cursor.execute(
             "UPDATE office_records SET status = ?, updated_at = ? WHERE id = ?",
-            (new_status, now, record_id)
+            (clean_status, now, record_id)
         )
         conn.commit()
     sync_db_to_static_files()
@@ -641,6 +933,21 @@ def search_records(
     """
     conditions = []
     params = []
+
+    # Sanitize string parameters
+    service_type = service_type if isinstance(service_type, str) else ""
+    name = name if isinstance(name, str) else ""
+    mobile = mobile if isinstance(mobile, str) else ""
+    id_number = id_number if isinstance(id_number, str) else ""
+    query = query if isinstance(query, str) else ""
+    date_filter = date_filter if isinstance(date_filter, str) else ""
+    status = status if isinstance(status, str) else ""
+    start_date = start_date if isinstance(start_date, str) else ""
+    end_date = end_date if isinstance(end_date, str) else ""
+    file_id = file_id if isinstance(file_id, int) and file_id > 0 else None
+    page = page if isinstance(page, int) and page >= 1 else 1
+    page_size = page_size if isinstance(page_size, int) and page_size >= 1 else 25
+    baki_only = bool(baki_only) if isinstance(baki_only, (bool, int)) else False
     
     if service_type and service_type.strip() and service_type.strip().lower() != "all":
         conditions.append("r.service_type = ?")
@@ -693,8 +1000,12 @@ def search_records(
         
     if status and status.strip() and status.strip().lower() != "all":
         st_lower = status.strip().lower()
-        if st_lower in ["inprocess", "in_process", "pending"]:
-            conditions.append("(LOWER(r.status) LIKE '%process%' OR LOWER(r.status) = 'pending')")
+        if st_lower in ["inprogress", "in_process", "inprocess", "pending", "process"]:
+            conditions.append("(LOWER(r.status) LIKE '%progress%' OR LOWER(r.status) LIKE '%process%' OR LOWER(r.status) = 'pending')")
+        elif st_lower in ["reject", "rejected", "failed", "cancelled"]:
+            conditions.append("LOWER(r.status) LIKE '%reject%'")
+        elif st_lower in ["complete", "completed", "done"]:
+            conditions.append("LOWER(r.status) LIKE '%complete%'")
         else:
             conditions.append("LOWER(r.status) = ?")
             params.append(st_lower)
@@ -791,6 +1102,9 @@ def get_daily_progress_stats(date_str: Optional[str] = None, service_type: Optio
     """
     conditions = []
     params = []
+
+    date_str = date_str if isinstance(date_str, str) else ""
+    service_type = service_type if isinstance(service_type, str) else ""
     
     if date_str and date_str.strip():
         ds = date_str.strip()
@@ -816,8 +1130,11 @@ def get_daily_progress_stats(date_str: Optional[str] = None, service_type: Optio
         cursor.execute(f"SELECT COUNT(*) FROM office_records {where_clause} {'AND' if conditions else 'WHERE'} LOWER(status) LIKE '%complete%'", params)
         completed_count = cursor.fetchone()[0]
 
-        cursor.execute(f"SELECT COUNT(*) FROM office_records {where_clause} {'AND' if conditions else 'WHERE'} (LOWER(status) LIKE '%process%' OR LOWER(status) LIKE '%pending%')", params)
+        cursor.execute(f"SELECT COUNT(*) FROM office_records {where_clause} {'AND' if conditions else 'WHERE'} (LOWER(status) LIKE '%progress%' OR LOWER(status) LIKE '%process%' OR LOWER(status) LIKE '%pending%')", params)
         in_process_count = cursor.fetchone()[0]
+
+        cursor.execute(f"SELECT COUNT(*) FROM office_records {where_clause} {'AND' if conditions else 'WHERE'} LOWER(status) LIKE '%reject%'", params)
+        rejected_count = cursor.fetchone()[0]
 
         cursor.execute(f"SELECT COUNT(*) FROM office_records {where_clause} {'AND' if conditions else 'WHERE'} is_baki = 1", params)
         baki_count = cursor.fetchone()[0]
@@ -834,6 +1151,8 @@ def get_daily_progress_stats(date_str: Optional[str] = None, service_type: Optio
         cursor.execute(f"""
             SELECT service_type, COUNT(*) as cnt,
                    SUM(CASE WHEN LOWER(status) LIKE '%complete%' THEN 1 ELSE 0 END) as comp,
+                   SUM(CASE WHEN LOWER(status) LIKE '%progress%' OR LOWER(status) LIKE '%process%' OR LOWER(status) LIKE '%pending%' THEN 1 ELSE 0 END) as in_prog,
+                   SUM(CASE WHEN LOWER(status) LIKE '%reject%' THEN 1 ELSE 0 END) as rej,
                    SUM(CASE WHEN is_baki = 1 THEN 1 ELSE 0 END) as baki,
                    SUM(fee_amt) as fees
             FROM office_records
@@ -845,6 +1164,8 @@ def get_daily_progress_stats(date_str: Optional[str] = None, service_type: Optio
             service_breakdown[r["service_type"]] = {
                 "total": r["cnt"],
                 "completed": r["comp"],
+                "in_process": r["in_prog"],
+                "rejected": r["rej"],
                 "baki": r["baki"],
                 "fee": r["fees"] or 0.0
             }
@@ -854,9 +1175,11 @@ def get_daily_progress_stats(date_str: Optional[str] = None, service_type: Optio
             "total_applications": total_count,
             "completed": completed_count,
             "in_process": in_process_count,
+            "rejected": rejected_count,
             "baki_pending": baki_count,
             "total_fee": total_fee,
             "completion_rate": round((completed_count / total_count * 100), 1) if total_count > 0 else 0,
+            "rejection_rate": round((rejected_count / total_count * 100), 1) if total_count > 0 else 0,
             "available_dates": available_dates,
             "service_breakdown": service_breakdown
         }

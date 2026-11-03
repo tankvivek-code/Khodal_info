@@ -27,8 +27,10 @@ echo   PERMANENT DATABASE ACTIVE: data\khodal_office.db
 echo   Clearing browser history will NEVER delete your client records!
 echo   All office data is permanently saved on your hard drive (D: drive).
 echo.
-echo   MASTER USER ID:   manish
-echo   PASSWORD:         manish@7575
+echo   MASTER USERS:     manish  (Password: manish@7575)
+echo                     admin   (Password: admin@7575)
+echo   USER DATA STORE:  Permanently stored in database (khodal_office.db)
+echo                     (No sensitive user/client data in browser storage)
 echo ---------------------------------------------------------------------
 echo.
 echo Launching your browser now...

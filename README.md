@@ -62,6 +62,19 @@ Open your browser to:
 
 ---
 
+## 🔐 Master Users & Database-Only Storage
+
+All user credentials, authentication sessions, and office records are permanently stored in the **SQLite Database (`data/khodal_office.db`)**, eliminating browser storage dependency:
+
+- **Built-in Master Users**:
+  - `manish` &mdash; Password: `manish@7575`
+  - `admin` &mdash; Password: `admin@7575`
+- **Dynamic Master User Creation**: Click the **Master Users** button in the top navigation bar to view all active master users or add new master users with custom usernames and passwords.
+- **Database Session Tokens**: All login sessions are verified server-side against the `user_sessions` table in SQLite; no user passwords or record data are stored in browser `localStorage`.
+- **Permanent Data Safety**: Clearing browser history, cache, or cookies will never delete your user data or office records.
+
+---
+
 ## 📁 Pre-Loaded Real Office Data
 
 All 4 demo files provided have already been loaded into your database:

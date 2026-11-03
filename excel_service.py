@@ -15,12 +15,16 @@ SID_DATE_REGEX = re.compile(r"S\d{10,14}(202[0-9])(0[1-9]|1[0-2])([0-3][0-9])")
 STATUS_MAP = {
     "COMPLETED": "Completed",
     "COMPLETE": "Completed",
-    "INPROCESS": "InProcess",
-    "IN PROCESS": "InProcess",
-    "PROCESS": "InProcess",
-    "REJECT": "Reject",
-    "REJECTED": "Reject",
-    "PENDING": "Pending",
+    "INPROGRESS": "InProgress",
+    "IN PROCESS": "InProgress",
+    "INPROCESS": "InProgress",
+    "PROCESS": "InProgress",
+    "REJECT": "Rejected",
+    "REJECTED": "Rejected",
+    "CANCEL": "Rejected",
+    "CANCELLED": "Rejected",
+    "FAILED": "Rejected",
+    "PENDING": "InProgress",
 }
 
 NON_NAME_WORDS = {
@@ -333,21 +337,17 @@ def parse_single_sheet_df(
 
         # 3. Status
         status = "Completed"
-        if "REJECT" in joined:
-            status = "Reject"
-        elif "INPROCESS" in joined or "IN PROCESS" in joined:
-            status = "InProcess"
-        elif "PENDING" in joined:
-            status = "Pending"
+        if "REJECT" in joined or "CANCEL" in joined:
+            status = "Rejected"
+        elif "INPROCESS" in joined or "IN PROCESS" in joined or "PROCESS" in joined or "PENDING" in joined:
+            status = "InProgress"
         elif idx_status != -1 and idx_status < len(cells) and cells[idx_status]:
             raw_st = cells[idx_status].lower()
-            if "process" in raw_st:
-                status = "InProcess"
-            elif "reject" in raw_st:
-                status = "Reject"
-            elif "pending" in raw_st:
-                status = "Pending"
-            elif "complete" in raw_st:
+            if "reject" in raw_st or "cancel" in raw_st:
+                status = "Rejected"
+            elif "process" in raw_st or "pending" in raw_st or "progress" in raw_st:
+                status = "InProgress"
+            elif "complete" in raw_st or "done" in raw_st:
                 status = "Completed"
 
         # 4. Total and Fee
@@ -507,7 +507,7 @@ def parse_single_sheet_df(
                 "normalized_mobile": norm_mob,
                 "id_number": id_num,
                 "pan_type": pan_type,
-                "status": status,
+                "status": "" if row_svc in ["pancard", "aayushman"] else status,
                 "total_amt": total_amt,
                 "fee_amt": fee_amt,
                 "remark": final_remark,
@@ -642,15 +642,15 @@ def export_records_to_excel(records: List[Dict[str, Any]], export_dir: str, serv
     )
 
     if service_type == "ucaadhar":
-        columns = ["No", "Date", "SID Number", "Customer Name", "Status", "Govt Total (Rs)", "Fee (Rs)", "Mobile Number", "Remarks"]
+        columns = ["Sr No", "Date", "Name", "SID Number", "Mobile Number", "Status", "Govt Total (Rs)", "Fee (Rs)", "Remarks"]
     elif service_type == "aadhar_online":
-        columns = ["No", "Date", "Customer Name", "SRN Number", "Mobile Number", "Status", "Remarks"]
+        columns = ["Sr No", "Date", "Name", "SRN Number", "Mobile Number", "Status", "Remarks"]
     elif service_type == "pancard":
-        columns = ["No", "Date", "Customer Name", "PAN Type", "Mobile Number", "Status", "Remarks"]
+        columns = ["Sr No", "Date", "Name", "Mobile Number", "PAN Type", "Fee (Rs)", "Remarks"]
     elif service_type == "aayushman":
-        columns = ["No", "Date", "Ration / Ayushman No", "Customer Name", "Mobile Number", "Status", "Remarks"]
+        columns = ["Sr No", "Date", "Name", "Ration / Ayushman No", "Mobile Number", "Remarks"]
     else:
-        columns = ["No", "Service", "Date", "Customer Name", "ID / SID / SRN / Card No", "Mobile Number", "Status", "Fee (Rs)", "Remarks"]
+        columns = ["Sr No", "Date", "Name", "Service", "ID Number", "Mobile Number", "Status", "Fee (Rs)", "Remarks"]
 
     ws.append(columns)
     for col_idx in range(1, len(columns) + 1):
@@ -663,16 +663,17 @@ def export_records_to_excel(records: List[Dict[str, Any]], export_dir: str, serv
 
     for idx, r in enumerate(records, start=1):
         formatted_date = format_date_dd_mm_yyyy(r.get("record_date"))
+        svc_name = (r.get("service_type") or "").lower()
         if service_type == "ucaadhar":
             row_data = [
                 idx,
                 formatted_date,
-                r.get("id_number", ""),
                 r.get("name", ""),
+                r.get("id_number", ""),
+                r.get("mobile", ""),
                 r.get("status", "Completed"),
                 r.get("total_amt", 0.0),
                 r.get("fee_amt", 0.0),
-                r.get("mobile", ""),
                 r.get("remark", "")
             ]
         elif service_type == "aadhar_online":
@@ -690,30 +691,30 @@ def export_records_to_excel(records: List[Dict[str, Any]], export_dir: str, serv
                 idx,
                 formatted_date,
                 r.get("name", ""),
-                r.get("pan_type", ""),
                 r.get("mobile", ""),
-                r.get("status", "Completed"),
+                r.get("pan_type", ""),
+                r.get("fee_amt", 0.0),
                 r.get("remark", "")
             ]
         elif service_type == "aayushman":
             row_data = [
                 idx,
                 formatted_date,
-                r.get("id_number", ""),
                 r.get("name", ""),
+                r.get("id_number", ""),
                 r.get("mobile", ""),
-                r.get("status", "Completed"),
                 r.get("remark", "")
             ]
         else:
+            st_val = "" if svc_name in ["pancard", "aayushman"] else (r.get("status") or "Completed")
             row_data = [
                 idx,
-                r.get("service_type", "").upper(),
                 formatted_date,
                 r.get("name", ""),
+                (r.get("service_type") or "").upper(),
                 r.get("id_number", ""),
                 r.get("mobile", ""),
-                r.get("status", "Completed"),
+                st_val,
                 r.get("fee_amt", 0.0),
                 r.get("remark", "")
             ]

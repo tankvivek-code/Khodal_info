@@ -7,7 +7,7 @@ import time
 from typing import Optional, List, Dict, Any
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, UploadFile, File, Form, Query, HTTPException, Request
+from fastapi import FastAPI, UploadFile, File, Form, Query, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -35,7 +35,13 @@ from database import (
     update_record_status,
     search_records,
     get_daily_progress_stats,
-    get_all_records_for_export
+    get_all_records_for_export,
+    create_master_user,
+    get_all_master_users,
+    delete_master_user,
+    create_user_session,
+    get_user_by_session_token,
+    delete_user_session
 )
 from excel_service import (
     parse_service_excel_or_csv,
@@ -87,39 +93,107 @@ app.add_middleware(
 
 
 @app.post("/api/auth/login")
-async def login(credentials: Dict[str, str]):
-    """Authenticate master user (manish / manish@7575)."""
+def login(credentials: Dict[str, str], response: Response):
+    """Authenticate master user against SQLite database and establish database session."""
     username = credentials.get("username", "")
     password = credentials.get("password", "")
     user = verify_user(username, password)
     if not user:
         raise HTTPException(status_code=401, detail="Invalid User ID or Password. Please check your credentials.")
     
-    token = hashlib.sha256(f"{user['username']}:{time.time()}:khodal_office_secret".encode()).hexdigest()
+    # Store session directly on SQLite database (no browser storage)
+    token = create_user_session(user["id"])
+    response.set_cookie(
+        key="khodal_session_token",
+        value=token,
+        max_age=30 * 24 * 3600,
+        httponly=True,
+        samesite="lax",
+        path="/"
+    )
     return {
         "status": "success",
-        "message": f"Welcome, {user['full_name']}!",
+        "message": f"Welcome back, {user['full_name']}!",
         "token": token,
         "user": user
     }
 
 
 @app.get("/api/auth/me")
-async def get_current_user():
-    """Return default master user profile."""
+def get_current_user(request: Request):
+    """Retrieve current authenticated master user from SQLite database session."""
+    token = request.cookies.get("khodal_session_token")
+    if not token:
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:].strip()
+            
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated. Please log in.")
+        
+    user = get_user_by_session_token(token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Session expired or invalid. Please log in.")
+        
     return {
         "status": "success",
-        "user": {
-            "username": "manish",
-            "full_name": "Manish",
-            "role": "master"
-        }
+        "user": user
     }
 
 
 @app.post("/api/auth/logout")
-async def logout():
+def logout(request: Request, response: Response):
+    """Invalidate session in database and clear session cookie."""
+    token = request.cookies.get("khodal_session_token")
+    if not token:
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:].strip()
+    if token:
+        delete_user_session(token)
+    response.delete_cookie(key="khodal_session_token", path="/" )
     return {"status": "success", "message": "Logged out successfully"}
+
+
+@app.get("/api/users")
+def list_master_users():
+    """List all active master users stored on the SQLite database."""
+    users = get_all_master_users()
+    return {"status": "success", "users": users}
+
+
+@app.post("/api/users")
+def add_master_user(payload: Dict[str, str]):
+    """Add a new master user directly to the SQLite database."""
+    username = payload.get("username", "").strip()
+    password = payload.get("password", "").strip()
+    full_name = payload.get("full_name", "").strip()
+
+    if not username or len(username) < 3:
+        raise HTTPException(status_code=400, detail="Username must be at least 3 characters.")
+    if not password or len(password) < 4:
+        raise HTTPException(status_code=400, detail="Password must be at least 4 characters.")
+    if not full_name:
+        full_name = username.capitalize()
+
+    try:
+        user = create_master_user(username=username, password=password, full_name=full_name)
+        return {
+            "status": "success",
+            "message": f"Master user '{username}' added successfully to database!",
+            "user": user
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.delete("/api/users/{user_id}")
+def remove_master_user(user_id: int):
+    """Delete a master user from the SQLite database."""
+    success, msg = delete_master_user(user_id)
+    if not success:
+        raise HTTPException(status_code=400, detail=msg)
+    return {"status": "success", "message": msg}
 
 
 @app.get("/api/info")
@@ -181,15 +255,24 @@ async def list_records(
 
 
 @app.post("/api/records")
-async def create_record(data: Dict[str, Any]):
+def create_record(data: Dict[str, Any], request: Request):
     if not data.get("name") and not data.get("id_number") and not data.get("mobile"):
         raise HTTPException(status_code=400, detail="Please provide at least a Name, ID Number, or Mobile Number.")
+    
+    # Associate record with active master user from database session
+    token = request.cookies.get("khodal_session_token")
+    if token:
+        user = get_user_by_session_token(token)
+        if user:
+            data["user_id"] = user["id"]
+            data["created_by"] = user["username"]
+            
     record_id = insert_single_record(data)
     return {"status": "success", "id": record_id, "message": "Record added successfully"}
 
 
 @app.put("/api/records/{record_id}")
-async def edit_record(record_id: int, data: Dict[str, Any]):
+def edit_record(record_id: int, data: Dict[str, Any]):
     updated = update_single_record(record_id, data)
     if not updated:
         raise HTTPException(status_code=404, detail="Record not found")
@@ -197,7 +280,7 @@ async def edit_record(record_id: int, data: Dict[str, Any]):
 
 
 @app.patch("/api/records/{record_id}/status")
-async def toggle_status(record_id: int, data: Dict[str, Any]):
+def toggle_status(record_id: int, data: Dict[str, Any]):
     new_status = data.get("status", "Completed")
     updated = update_record_status(record_id, new_status)
     if not updated:
@@ -206,7 +289,7 @@ async def toggle_status(record_id: int, data: Dict[str, Any]):
 
 
 @app.delete("/api/records/{record_id}")
-async def remove_record(record_id: int):
+def remove_record(record_id: int):
     deleted = delete_single_record(record_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Record not found")
@@ -215,6 +298,7 @@ async def remove_record(record_id: int):
 
 @app.post("/api/upload")
 async def upload_daily_file(
+    request: Request,
     file: UploadFile = File(...),
     service_type: Optional[str] = Form("auto"),
     file_date: Optional[str] = Form("")
@@ -241,6 +325,16 @@ async def upload_daily_file(
         actual_svc = summary.get("service_type", service_type)
         sheets_count = summary.get("sheets_count", 1)
         sheet_names = summary.get("sheet_names", [])
+
+        # Detect active master user from session
+        token = request.cookies.get("khodal_session_token")
+        uploaded_by = "manish"
+        user_id = 1
+        if token:
+            user = get_user_by_session_token(token)
+            if user:
+                uploaded_by = user["username"]
+                user_id = user["id"]
         
         # 2. Add file record in DB with raw binary BLOB stored inside SQLite
         file_id = add_uploaded_file(
@@ -251,7 +345,9 @@ async def upload_daily_file(
             file_size=file_size,
             row_count=0,
             file_blob=file_bytes,
-            sheet_names=sheet_names
+            sheet_names=sheet_names,
+            uploaded_by=uploaded_by,
+            user_id=user_id
         )
         
         # Assign file_id to records
@@ -399,21 +495,72 @@ async def export_csv(
     output = io.StringIO()
     writer = csv.writer(output)
     
-    headers = ["Sr No", "Service", "Date", "Name", "ID Number", "Mobile No", "Status", "Amount", "Remarks"]
-    writer.writerow(headers)
-    
-    for idx, r in enumerate(records, start=1):
-        writer.writerow([
-            idx,
-            r.get("service_type", "").upper(),
-            r.get("record_date", ""),
-            r.get("name", ""),
-            r.get("id_number", ""),
-            r.get("mobile", ""),
-            r.get("status", "") or r.get("pan_type", ""),
-            r.get("fee_amt", 0.0),
-            r.get("remark", "")
-        ])
+    clean_svc = (service_type or "all").lower()
+    if clean_svc == "ucaadhar":
+        writer.writerow(["Sr No", "Date", "Name", "SID Number", "Mobile No", "Status", "Govt Total", "Fee", "Remarks"])
+        for idx, r in enumerate(records, start=1):
+            writer.writerow([
+                idx,
+                r.get("record_date", ""),
+                r.get("name", ""),
+                r.get("id_number", ""),
+                r.get("mobile", ""),
+                r.get("status", "Completed"),
+                r.get("total_amt", 0.0),
+                r.get("fee_amt", 0.0),
+                r.get("remark", "")
+            ])
+    elif clean_svc == "aadhar_online":
+        writer.writerow(["Sr No", "Date", "Name", "SRN Number", "Mobile No", "Status", "Remarks"])
+        for idx, r in enumerate(records, start=1):
+            writer.writerow([
+                idx,
+                r.get("record_date", ""),
+                r.get("name", ""),
+                r.get("id_number", ""),
+                r.get("mobile", ""),
+                r.get("status", "Completed"),
+                r.get("remark", "")
+            ])
+    elif clean_svc == "pancard":
+        writer.writerow(["Sr No", "Date", "Name", "Mobile No", "PAN Type", "Fee", "Remarks"])
+        for idx, r in enumerate(records, start=1):
+            writer.writerow([
+                idx,
+                r.get("record_date", ""),
+                r.get("name", ""),
+                r.get("mobile", ""),
+                r.get("pan_type", ""),
+                r.get("fee_amt", 0.0),
+                r.get("remark", "")
+            ])
+    elif clean_svc == "aayushman":
+        writer.writerow(["Sr No", "Date", "Name", "Ration / Ayushman No", "Mobile No", "Remarks"])
+        for idx, r in enumerate(records, start=1):
+            writer.writerow([
+                idx,
+                r.get("record_date", ""),
+                r.get("name", ""),
+                r.get("id_number", ""),
+                r.get("mobile", ""),
+                r.get("remark", "")
+            ])
+    else:
+        writer.writerow(["Sr No", "Date", "Name", "Service", "ID Number", "Mobile No", "Status", "Amount", "Remarks"])
+        for idx, r in enumerate(records, start=1):
+            svc_name = (r.get("service_type") or "").lower()
+            st_val = "" if svc_name in ["pancard", "aayushman"] else (r.get("status") or "Completed")
+            writer.writerow([
+                idx,
+                r.get("record_date", ""),
+                r.get("name", ""),
+                (r.get("service_type") or "").upper(),
+                r.get("id_number", ""),
+                r.get("mobile", ""),
+                st_val,
+                r.get("fee_amt", 0.0),
+                r.get("remark", "")
+            ])
         
     output.seek(0)
     return StreamingResponse(
@@ -459,6 +606,8 @@ DATA_DIR = os.path.join(BASE_DIR, "data")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 if os.path.exists(DATA_DIR):
     app.mount("/data", StaticFiles(directory=DATA_DIR), name="data")
+if os.path.exists(TEMPLATE_DIR):
+    app.mount("/templates", StaticFiles(directory=TEMPLATE_DIR), name="templates")
 
 
 @app.get("/")
