@@ -23,10 +23,20 @@ const SERVICE_META = {
     all: { name: "All Services", color: "brand", label: "🌟 All Services" }
 };
 
-document.addEventListener("DOMContentLoaded", () => {
+function boot() {
     initApp();
     setupDropzone();
     setupKeyboardListeners();
+}
+
+if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", boot);
+} else {
+    boot();
+}
+
+window.addEventListener("load", () => {
+    refreshIcons();
 });
 
 // =========================================================================
@@ -34,7 +44,7 @@ document.addEventListener("DOMContentLoaded", () => {
 // =========================================================================
 let isStaticMode = window.location.hostname.includes("github.io") || window.location.protocol === "file:";
 let staticRecords = [];
-const STORAGE_KEY = "khodal_records_store_v1";
+const STORAGE_KEY = "khodal_records_store_v2";
 
 async function initDataStore() {
     if (!isStaticMode) {
@@ -92,8 +102,18 @@ async function initApp() {
 }
 
 function refreshIcons() {
-    if (window.lucide) {
-        lucide.createIcons();
+    if (window.lucide && typeof window.lucide.createIcons === "function") {
+        try {
+            lucide.createIcons();
+        } catch (e) {}
+    } else {
+        setTimeout(() => {
+            if (window.lucide && typeof window.lucide.createIcons === "function") {
+                try {
+                    lucide.createIcons();
+                } catch (e) {}
+            }
+        }, 300);
     }
 }
 
