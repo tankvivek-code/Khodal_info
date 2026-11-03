@@ -366,6 +366,19 @@ def parse_service_excel_or_csv(file_path: str, file_id: int, forced_service: Opt
     return all_records, summary
 
 
+def format_date_dd_mm_yyyy(val: Any) -> str:
+    if pd.isna(val) or val is None or not str(val).strip():
+        return ""
+    s = str(val).strip()
+    m = re.match(r"^(\d{4})[-/](\d{1,2})[-/](\d{1,2})", s)
+    if m:
+        return f"{int(m.group(3)):02d}-{int(m.group(2)):02d}-{m.group(1)}"
+    m2 = re.match(r"^(\d{1,2})[-/](\d{1,2})[-/](\d{4})", s)
+    if m2:
+        return f"{int(m2.group(1)):02d}-{int(m2.group(2)):02d}-{m2.group(3)}"
+    return s
+
+
 def export_records_to_excel(records: List[Dict[str, Any]], export_dir: str, service_type: Optional[str] = None) -> str:
     os.makedirs(export_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -413,30 +426,31 @@ def export_records_to_excel(records: List[Dict[str, Any]], export_dir: str, serv
 
     # Write data
     for idx, r in enumerate(records, start=1):
+        dt_disp = format_date_dd_mm_yyyy(r.get("record_date", ""))
         if service_type == "ucaadhar":
             row_data = [
-                idx, r.get("record_date", ""), r.get("id_number", ""), r.get("name", ""),
+                idx, dt_disp, r.get("id_number", ""), r.get("name", ""),
                 r.get("status", ""), r.get("total_amt", 0.0), r.get("fee_amt", 0.0),
                 r.get("mobile", ""), r.get("remark", "")
             ]
         elif service_type == "aadhar_online":
             row_data = [
-                idx, r.get("record_date", ""), r.get("name", ""), r.get("id_number", ""),
+                idx, dt_disp, r.get("name", ""), r.get("id_number", ""),
                 r.get("mobile", ""), r.get("status", ""), r.get("remark", "")
             ]
         elif service_type == "pancard":
             row_data = [
-                idx, r.get("record_date", ""), r.get("name", ""), r.get("pan_type", ""),
+                idx, dt_disp, r.get("name", ""), r.get("pan_type", ""),
                 r.get("mobile", ""), r.get("status", ""), r.get("remark", "")
             ]
         elif service_type == "aayushman":
             row_data = [
-                idx, r.get("record_date", ""), r.get("id_number", ""), r.get("name", ""),
+                idx, dt_disp, r.get("id_number", ""), r.get("name", ""),
                 r.get("mobile", ""), r.get("status", ""), r.get("remark", "")
             ]
         else:
             row_data = [
-                idx, r.get("service_type", "").upper(), r.get("record_date", ""), r.get("name", ""),
+                idx, r.get("service_type", "").upper(), dt_disp, r.get("name", ""),
                 r.get("id_number", ""), r.get("mobile", ""), r.get("status", "") or r.get("pan_type", ""),
                 r.get("fee_amt", 0.0), r.get("remark", "")
             ]

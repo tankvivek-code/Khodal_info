@@ -388,8 +388,12 @@ def search_records(
         params.append(f"%{id_number.strip().lower()}%")
 
     if date_filter and date_filter.strip():
+        df = date_filter.strip()
+        m = re.match(r"^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$", df)
+        if m:
+            df = f"{m.group(3)}-{int(m.group(2)):02d}-{int(m.group(1)):02d}"
         conditions.append("r.record_date = ?")
-        params.append(date_filter.strip())
+        params.append(df)
     elif start_date and end_date:
         conditions.append("r.record_date BETWEEN ? AND ?")
         params.extend([start_date.strip(), end_date.strip()])
@@ -496,8 +500,12 @@ def get_daily_progress_stats(date_str: Optional[str] = None, service_type: Optio
     params = []
     
     if date_str and date_str.strip():
+        ds = date_str.strip()
+        m = re.match(r"^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$", ds)
+        if m:
+            ds = f"{m.group(3)}-{int(m.group(2)):02d}-{int(m.group(1)):02d}"
         conditions.append("record_date = ?")
-        params.append(date_str.strip())
+        params.append(ds)
         
     if service_type and service_type.strip() and service_type.strip().lower() != "all":
         conditions.append("service_type = ?")

@@ -23,6 +23,49 @@ const SERVICE_META = {
     all: { name: "All Services", color: "brand", label: "🌟 All Services" }
 };
 
+// =========================================================================
+// DATE FORMATTERS (Strict DD-MM-YYYY User Display)
+// =========================================================================
+function formatDateDisplay(val) {
+    if (!val) return "-";
+    const s = String(val).trim();
+    if (!s || s === "-") return "-";
+
+    // Match YYYY-MM-DD or YYYY/MM/DD
+    const mIso = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+    if (mIso) {
+        const day = String(mIso[3]).padStart(2, '0');
+        const month = String(mIso[2]).padStart(2, '0');
+        const year = mIso[1];
+        return `${day}-${month}-${year}`;
+    }
+
+    // Match DD-MM-YYYY or DD/MM/YYYY
+    const mDm = s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
+    if (mDm) {
+        const day = String(mDm[1]).padStart(2, '0');
+        const month = String(mDm[2]).padStart(2, '0');
+        const year = mDm[3];
+        return `${day}-${month}-${year}`;
+    }
+
+    return s;
+}
+
+function normalizeDateToIso(val) {
+    if (!val) return "";
+    const s = String(val).trim();
+    const mDm = s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
+    if (mDm) {
+        return `${mDm[3]}-${String(mDm[2]).padStart(2, '0')}-${String(mDm[1]).padStart(2, '0')}`;
+    }
+    const mIso = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+    if (mIso) {
+        return `${mIso[1]}-${String(mIso[2]).padStart(2, '0')}-${String(mIso[3]).padStart(2, '0')}`;
+    }
+    return s;
+}
+
 function boot() {
     initApp();
     setupDropzone();
@@ -198,7 +241,7 @@ async function loadDailyProgress() {
         document.getElementById("stat-progress-baki").textContent = baki.toLocaleString();
         document.getElementById("stat-progress-fees").textContent = fee.toLocaleString();
         document.getElementById("stat-progress-rate").textContent = `${completionRate}%`;
-        document.getElementById("stat-progress-date-pill").textContent = currentDateFilter || "All";
+        document.getElementById("stat-progress-date-pill").textContent = currentDateFilter ? formatDateDisplay(currentDateFilter) : "All";
 
         // Tab Badges
         const breakdown = {
@@ -243,7 +286,7 @@ async function loadDailyProgress() {
         document.getElementById("stat-progress-fees").textContent = (data.total_fee || 0).toLocaleString();
         document.getElementById("stat-progress-rate").textContent = `${data.completion_rate || 0}%`;
 
-        document.getElementById("stat-progress-date-pill").textContent = currentDateFilter || "All";
+        document.getElementById("stat-progress-date-pill").textContent = currentDateFilter ? formatDateDisplay(currentDateFilter) : "All";
 
         // Update Service Tab Badges
         const breakdown = data.service_breakdown || {};
@@ -273,7 +316,7 @@ function populateDateSelector(availableDates) {
     availableDates.forEach(d => {
         const opt = document.createElement("option");
         opt.value = d;
-        opt.textContent = `📅 ${d}`;
+        opt.textContent = `📅 ${formatDateDisplay(d)}`;
         select.appendChild(opt);
     });
 
@@ -310,7 +353,11 @@ async function fetchRecords(page = 1) {
             filtered = filtered.filter(r => (r.service_type || "").toLowerCase() === params.service_type.toLowerCase());
         }
         if (params.date) {
-            filtered = filtered.filter(r => (r.record_date || "").startsWith(params.date));
+            const isoD = normalizeDateToIso(params.date);
+            filtered = filtered.filter(r => {
+                const rd = r.record_date || "";
+                return rd.startsWith(params.date) || (isoD && rd.startsWith(isoD)) || formatDateDisplay(rd).includes(params.date);
+            });
         }
         if (params.name) {
             const q = params.name.toLowerCase();
@@ -532,7 +579,7 @@ function renderRecordsTable(records, serviceType) {
         if (serviceType === "ucaadhar") {
             rowHtml = `
                 <td class="py-3 px-3 text-center text-xs font-mono text-slate-400 font-medium">${globalIdx}</td>
-                <td class="py-3 px-3 text-xs font-mono font-medium text-slate-700 whitespace-nowrap">${escapeHtml(r.record_date)}</td>
+                <td class="py-3 px-3 text-xs font-mono font-medium text-slate-700 whitespace-nowrap">${escapeHtml(formatDateDisplay(r.record_date))}</td>
                 <td class="py-3 px-3 font-mono text-xs font-semibold text-brand-700 max-w-[200px] truncate" title="${escapeHtml(r.id_number)}">${hlId}</td>
                 <td class="py-3 px-3 text-sm font-semibold text-slate-900 truncate max-w-[190px] cursor-pointer hover:text-brand-600" onclick="viewRecordDetails(${r.id})">${hlName}</td>
                 <td class="py-3 px-3 text-center">${statusBadge}</td>
@@ -550,7 +597,7 @@ function renderRecordsTable(records, serviceType) {
         } else if (serviceType === "aadhar_online") {
             rowHtml = `
                 <td class="py-3 px-3 text-center text-xs font-mono text-slate-400 font-medium">${globalIdx}</td>
-                <td class="py-3 px-3 text-xs font-mono font-medium text-slate-700 whitespace-nowrap">${escapeHtml(r.record_date)}</td>
+                <td class="py-3 px-3 text-xs font-mono font-medium text-slate-700 whitespace-nowrap">${escapeHtml(formatDateDisplay(r.record_date))}</td>
                 <td class="py-3 px-3 text-sm font-semibold text-slate-900 truncate max-w-[200px] cursor-pointer hover:text-brand-600" onclick="viewRecordDetails(${r.id})">${hlName}</td>
                 <td class="py-3 px-3 font-mono text-xs font-bold text-indigo-700 max-w-[170px] truncate" title="${escapeHtml(r.id_number)}">${hlId}</td>
                 <td class="py-3 px-3">
@@ -566,7 +613,7 @@ function renderRecordsTable(records, serviceType) {
         } else if (serviceType === "pancard") {
             rowHtml = `
                 <td class="py-3 px-3 text-center text-xs font-mono text-slate-400 font-medium">${globalIdx}</td>
-                <td class="py-3 px-3 text-xs font-mono font-medium text-slate-700 whitespace-nowrap">${escapeHtml(r.record_date)}</td>
+                <td class="py-3 px-3 text-xs font-mono font-medium text-slate-700 whitespace-nowrap">${escapeHtml(formatDateDisplay(r.record_date))}</td>
                 <td class="py-3 px-3 text-sm font-semibold text-slate-900 truncate max-w-[200px] cursor-pointer hover:text-brand-600" onclick="viewRecordDetails(${r.id})">${hlName}</td>
                 <td class="py-3 px-3 text-xs font-bold ${(r.pan_type || '').includes('NEW') ? 'text-blue-700' : 'text-amber-700'}">${escapeHtml(r.pan_type || '-')}</td>
                 <td class="py-3 px-3">
@@ -582,7 +629,7 @@ function renderRecordsTable(records, serviceType) {
         } else if (serviceType === "aayushman") {
             rowHtml = `
                 <td class="py-3 px-3 text-center text-xs font-mono text-slate-400 font-medium">${globalIdx}</td>
-                <td class="py-3 px-3 text-xs font-mono font-medium text-slate-700 whitespace-nowrap">${escapeHtml(r.record_date)}</td>
+                <td class="py-3 px-3 text-xs font-mono font-medium text-slate-700 whitespace-nowrap">${escapeHtml(formatDateDisplay(r.record_date))}</td>
                 <td class="py-3 px-3 font-mono text-xs font-bold text-purple-700 max-w-[170px] truncate" title="${escapeHtml(r.id_number)}">${hlId}</td>
                 <td class="py-3 px-3 text-sm font-semibold text-slate-900 truncate max-w-[200px] cursor-pointer hover:text-brand-600" onclick="viewRecordDetails(${r.id})">${hlName}</td>
                 <td class="py-3 px-3">
@@ -600,7 +647,7 @@ function renderRecordsTable(records, serviceType) {
             rowHtml = `
                 <td class="py-3 px-3 text-center text-xs font-mono text-slate-400 font-medium">${globalIdx}</td>
                 <td class="py-3 px-3">${svcBadge}</td>
-                <td class="py-3 px-3 text-xs font-mono font-medium text-slate-700 whitespace-nowrap">${escapeHtml(r.record_date)}</td>
+                <td class="py-3 px-3 text-xs font-mono font-medium text-slate-700 whitespace-nowrap">${escapeHtml(formatDateDisplay(r.record_date))}</td>
                 <td class="py-3 px-3 text-sm font-semibold text-slate-900 truncate max-w-[180px] cursor-pointer hover:text-brand-600" onclick="viewRecordDetails(${r.id})">${hlName}</td>
                 <td class="py-3 px-3 font-mono text-xs font-semibold text-slate-700 max-w-[150px] truncate" title="${escapeHtml(r.id_number)}">${hlId}</td>
                 <td class="py-3 px-3">
@@ -863,7 +910,7 @@ function viewRecordDetails(recordId) {
     document.getElementById("view-name").textContent = record.name || "Unnamed";
     document.getElementById("view-avatar").textContent = (record.name && record.name.length > 0) ? record.name.charAt(0).toUpperCase() : "K";
     document.getElementById("view-service-badge").textContent = (record.service_type || "general").toUpperCase();
-    document.getElementById("view-date").textContent = record.record_date || "-";
+    document.getElementById("view-date").textContent = formatDateDisplay(record.record_date);
     document.getElementById("view-id-num").textContent = record.id_number || "-";
     document.getElementById("view-mobile").textContent = record.mobile || "-";
     document.getElementById("view-status").textContent = record.status || (record.pan_type || "InProcess");
@@ -911,7 +958,7 @@ function copyRecordCard(recordId) {
 
     let text = `📌 Khodal Office Update\n`;
     text += `🔹 Service: ${(r.service_type || 'Office').toUpperCase()}\n`;
-    text += `📅 Date: ${r.record_date || '-'}\n`;
+    text += `📅 Date: ${formatDateDisplay(r.record_date)}\n`;
     text += `👤 Name: ${r.name || '-'}\n`;
     if (r.id_number) text += `🔢 Number (SID/SRN/Card): ${r.id_number}\n`;
     if (r.mobile) text += `📱 Mobile: ${r.mobile}\n`;
@@ -974,7 +1021,7 @@ function openAddRecordModal() {
     document.getElementById("record-form-title").textContent = "New Office Entry";
     document.getElementById("form-record-id").value = "";
     document.getElementById("record-form").reset();
-    document.getElementById("form-date").value = currentDateFilter || new Date().toISOString().split("T")[0];
+    document.getElementById("form-date").value = normalizeDateToIso(currentDateFilter) || new Date().toISOString().split("T")[0];
     const initialSvc = currentServiceTab !== "all" ? currentServiceTab : "ucaadhar";
     document.getElementById("form-service-type").value = initialSvc;
     updateFormIdLabel(initialSvc);
@@ -990,7 +1037,7 @@ function openEditRecordModal(recordId) {
     const recSvc = r.service_type || "ucaadhar";
     document.getElementById("form-service-type").value = recSvc;
     updateFormIdLabel(recSvc);
-    document.getElementById("form-date").value = r.record_date || "";
+    document.getElementById("form-date").value = normalizeDateToIso(r.record_date) || "";
     document.getElementById("form-name").value = r.name || "";
     document.getElementById("form-mobile").value = r.mobile || "";
     document.getElementById("form-id-number").value = r.id_number || "";
@@ -1720,14 +1767,18 @@ function exportCurrentView(format = "excel") {
             records = records.filter(r => (r.service_type || "").toLowerCase() === params.service_type.toLowerCase());
         }
         if (params.date) {
-            records = records.filter(r => (r.record_date || "").startsWith(params.date));
+            const isoD = normalizeDateToIso(params.date);
+            records = records.filter(r => {
+                const rd = r.record_date || "";
+                return rd.startsWith(params.date) || (isoD && rd.startsWith(isoD)) || formatDateDisplay(rd).includes(params.date);
+            });
         }
 
         if (format === "excel" && window.XLSX) {
             const wsData = records.map((r, i) => ({
                 "Sr No": i + 1,
                 "Service": (r.service_type || "").toUpperCase(),
-                "Date": r.record_date || "",
+                "Date": formatDateDisplay(r.record_date),
                 "Name": r.name || "",
                 "ID Number": r.id_number || "",
                 "Mobile No": r.mobile || "",
@@ -1749,7 +1800,7 @@ function exportCurrentView(format = "excel") {
             const row = [
                 idx + 1,
                 `"${(r.service_type || '').toUpperCase()}"`,
-                `"${r.record_date || ''}"`,
+                `"${formatDateDisplay(r.record_date)}"`,
                 `"${(r.name || '').replace(/"/g, '""')}"`,
                 `"${r.id_number || ''}"`,
                 `"${r.mobile || ''}"`,

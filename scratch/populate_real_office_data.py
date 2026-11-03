@@ -126,3 +126,4 @@ with open("data/records.js", "w", encoding="utf-8") as f:
     f.write(f"window.KHODAL_INITIAL_FILES = {json.dumps(all_files_metadata, ensure_ascii=False)};\n")
 
 print("Successfully written data/records.json and data/records.js!")
+
