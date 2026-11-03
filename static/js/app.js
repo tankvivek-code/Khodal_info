@@ -29,8 +29,51 @@ document.addEventListener("DOMContentLoaded", () => {
     setupKeyboardListeners();
 });
 
+// =========================================================================
+// HYBRID DATA STORE (Seamless GitHub Pages & Static Mode Support)
+// =========================================================================
+let isStaticMode = window.location.hostname.includes("github.io") || window.location.protocol === "file:";
+let staticRecords = [];
+const STORAGE_KEY = "khodal_records_store_v1";
+
+async function initDataStore() {
+    if (!isStaticMode) {
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 1200);
+            const test = await fetch("/api/info", { signal: controller.signal });
+            clearTimeout(timeoutId);
+            if (!test.ok) isStaticMode = true;
+        } catch (e) {
+            isStaticMode = true;
+        }
+    }
+
+    if (isStaticMode) {
+        console.log("⚡ Khodal Office Hub running in Client-Side / GitHub Pages Mode");
+        const cached = localStorage.getItem(STORAGE_KEY);
+        if (cached) {
+            try {
+                staticRecords = JSON.parse(cached);
+            } catch (e) {}
+        }
+        if (!staticRecords || staticRecords.length === 0) {
+            try {
+                const res = await fetch("data/records.json");
+                if (res.ok) {
+                    staticRecords = await res.json();
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(staticRecords));
+                }
+            } catch (err) {
+                console.warn("Could not load data/records.json", err);
+            }
+        }
+    }
+}
+
 async function initApp() {
     refreshIcons();
+    await initDataStore();
     await fetchSystemInfo();
     await loadDailyProgress();
     await fetchRecords(1);
@@ -47,6 +90,16 @@ function refreshIcons() {
 // =========================================================================
 
 async function fetchSystemInfo() {
+    if (isStaticMode) {
+        lanShareUrl = window.location.href;
+        const displayEl = document.getElementById("lan-url-display");
+        if (displayEl) {
+            displayEl.textContent = window.location.hostname.includes("github.io") ? "Live on GitHub Pages" : "Client-Side Mode";
+        }
+        const shareBox = document.getElementById("lan-share-box");
+        if (shareBox) shareBox.classList.remove("hidden");
+        return;
+    }
     try {
         const res = await fetch("/api/info");
         const data = await res.json();
@@ -56,11 +109,72 @@ async function fetchSystemInfo() {
             if (displayEl) displayEl.textContent = data.office_share_url.replace("http://", "");
         }
     } catch (err) {
-        console.warn("Could not fetch network info", err);
+        isStaticMode = true;
     }
 }
 
 async function loadDailyProgress() {
+    if (isStaticMode) {
+        let records = staticRecords.slice();
+        if (currentServiceTab && currentServiceTab !== "all") {
+            records = records.filter(r => (r.service_type || "").toLowerCase() === currentServiceTab.toLowerCase());
+        }
+        if (currentDateFilter) {
+            records = records.filter(r => (r.record_date || "").startsWith(currentDateFilter));
+        }
+
+        const total = records.length;
+        let completed = 0;
+        let inProcess = 0;
+        let baki = 0;
+        let fee = 0.0;
+
+        records.forEach(r => {
+            const st = (r.status || "").toLowerCase();
+            if (st === "completed" || st === "complete" || st === "done") completed++;
+            else inProcess++;
+
+            if (r.is_baki === 1 || (r.remark || "").toUpperCase().includes("BAKI")) baki++;
+            fee += Number(r.fee_amt || 0);
+        });
+
+        const completionRate = total > 0 ? Math.round((completed / total) * 1000) / 10 : 0.0;
+
+        document.getElementById("stat-progress-total").textContent = total.toLocaleString();
+        document.getElementById("stat-progress-completed").textContent = completed.toLocaleString();
+        document.getElementById("stat-progress-inprocess").textContent = inProcess.toLocaleString();
+        document.getElementById("stat-progress-baki").textContent = baki.toLocaleString();
+        document.getElementById("stat-progress-fees").textContent = fee.toLocaleString();
+        document.getElementById("stat-progress-rate").textContent = `${completionRate}%`;
+        document.getElementById("stat-progress-date-pill").textContent = currentDateFilter || "All";
+
+        // Tab Badges
+        const breakdown = {
+            ucaadhar: 0,
+            aadhar_online: 0,
+            pancard: 0,
+            aayushman: 0
+        };
+        staticRecords.forEach(r => {
+            const s = (r.service_type || "").toLowerCase();
+            if (breakdown[s] !== undefined) breakdown[s]++;
+        });
+        ['ucaadhar', 'aadhar_online', 'pancard', 'aayushman'].forEach(svc => {
+            const badgeEl = document.getElementById(`tab-badge-${svc}`);
+            if (badgeEl) badgeEl.textContent = breakdown[svc] || 0;
+        });
+        const badgeAllEl = document.getElementById("tab-badge-all");
+        if (badgeAllEl) badgeAllEl.textContent = staticRecords.length;
+
+        // Populate Date Selector
+        const dateSet = new Set();
+        staticRecords.forEach(r => {
+            if (r.record_date && r.record_date.length >= 10) dateSet.add(r.record_date.substring(0, 10));
+        });
+        populateDateSelector(Array.from(dateSet).sort().reverse());
+        return;
+    }
+
     try {
         const queryStr = new URLSearchParams();
         if (currentDateFilter) queryStr.append("date", currentDateFilter);
@@ -134,6 +248,58 @@ async function fetchRecords(page = 1) {
     currentPage = page;
     const params = getSearchParams();
     params.page = page;
+
+    const spinner = document.getElementById("table-loading-spinner");
+    if (spinner) spinner.classList.remove("hidden");
+
+    if (isStaticMode) {
+        let filtered = staticRecords.slice();
+        if (params.service_type && params.service_type !== "all") {
+            filtered = filtered.filter(r => (r.service_type || "").toLowerCase() === params.service_type.toLowerCase());
+        }
+        if (params.date) {
+            filtered = filtered.filter(r => (r.record_date || "").startsWith(params.date));
+        }
+        if (params.name) {
+            const q = params.name.toLowerCase();
+            filtered = filtered.filter(r => (r.name || "").toLowerCase().includes(q));
+        }
+        if (params.mobile) {
+            const mobClean = params.mobile.replace(/\D/g, "");
+            filtered = filtered.filter(r => (r.mobile || "").includes(params.mobile) || (r.normalized_mobile || "").includes(mobClean));
+        }
+        if (params.id_number) {
+            const q = params.id_number.toLowerCase();
+            filtered = filtered.filter(r => (r.id_number || "").toLowerCase().includes(q));
+        }
+        if (params.status && params.status !== "all") {
+            filtered = filtered.filter(r => (r.status || "").toLowerCase() === params.status.toLowerCase());
+        }
+        if (params.baki_only) {
+            filtered = filtered.filter(r => r.is_baki === 1 || (r.remark || "").toUpperCase().includes("BAKI"));
+        }
+
+        totalRecords = filtered.length;
+        totalPages = Math.max(1, Math.ceil(totalRecords / params.page_size));
+        const start = (params.page - 1) * params.page_size;
+        currentRecords = filtered.slice(start, start + params.page_size);
+
+        renderTableHeaders(currentServiceTab);
+        renderRecordsTable(currentRecords, currentServiceTab);
+        updatePaginationUI({
+            page: params.page,
+            page_size: params.page_size,
+            total_count: totalRecords,
+            total_pages: totalPages
+        });
+
+        document.getElementById("badge-total-records").textContent = `${totalRecords.toLocaleString()} records`;
+        const activeTitle = SERVICE_META[currentServiceTab] ? SERVICE_META[currentServiceTab].label : "All Services";
+        document.getElementById("active-service-title").textContent = `${activeTitle} Records`;
+
+        if (spinner) spinner.classList.add("hidden");
+        return;
+    }
 
     const queryStr = new URLSearchParams();
     if (params.service_type) queryStr.append("service_type", params.service_type);
@@ -588,6 +754,18 @@ function resetAllFilters() {
 // =========================================================================
 
 async function toggleRecordStatus(recordId, newStatus) {
+    if (isStaticMode) {
+        const rec = staticRecords.find(r => r.id === recordId);
+        if (rec) {
+            rec.status = newStatus;
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(staticRecords));
+            showToast(`Status updated to ${newStatus}`, "success");
+            await loadDailyProgress();
+            await fetchRecords(currentPage);
+        }
+        return;
+    }
+
     try {
         const res = await fetch(`/api/records/${recordId}/status`, {
             method: "PATCH",
@@ -725,6 +903,29 @@ async function handleRecordFormSubmit(e) {
         remark: document.getElementById("form-remark").value.trim()
     };
 
+    if (isStaticMode) {
+        if (isEdit) {
+            const idx = staticRecords.findIndex(r => r.id === Number(recordId));
+            if (idx !== -1) {
+                staticRecords[idx] = { ...staticRecords[idx], ...payload, id: Number(recordId) };
+            }
+        } else {
+            const nextId = staticRecords.reduce((max, r) => Math.max(max, r.id || 0), 0) + 1;
+            staticRecords.unshift({
+                id: nextId,
+                ...payload,
+                normalized_mobile: (payload.mobile || "").replace(/\D/g, "").slice(-10),
+                is_baki: (payload.remark || "").toUpperCase().includes("BAKI") ? 1 : 0
+            });
+        }
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(staticRecords));
+        showToast(isEdit ? "Record updated" : "Entry added successfully", "success");
+        closeModal("modal-record-form");
+        await loadDailyProgress();
+        await fetchRecords(currentPage);
+        return;
+    }
+
     try {
         const url = isEdit ? `/api/records/${recordId}` : "/api/records";
         const method = isEdit ? "PUT" : "POST";
@@ -751,6 +952,15 @@ async function handleRecordFormSubmit(e) {
 
 async function deleteRecordAction(recordId) {
     if (!confirm("Are you sure you want to delete this record?")) return;
+
+    if (isStaticMode) {
+        staticRecords = staticRecords.filter(r => r.id !== Number(recordId));
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(staticRecords));
+        showToast("Record deleted", "info");
+        await loadDailyProgress();
+        await fetchRecords(currentPage);
+        return;
+    }
 
     try {
         const res = await fetch(`/api/records/${recordId}`, { method: "DELETE" });
@@ -823,6 +1033,76 @@ async function submitFileUpload() {
     progressBox.classList.remove("hidden");
     submitBtn.disabled = true;
 
+    if (isStaticMode) {
+        if (!window.XLSX) {
+            showToast("SheetJS library is loading, please try again", "warning");
+            progressBox.classList.add("hidden");
+            submitBtn.disabled = false;
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = async function(e) {
+            try {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: "array" });
+                const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                const jsonRows = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+                let imported = 0;
+                let lastDate = new Date().toISOString().split("T")[0];
+
+                jsonRows.forEach(row => {
+                    if (!row || row.length === 0) return;
+                    row.forEach(cell => {
+                        const c = String(cell).trim();
+                        if (/^\d{4}-\d{2}-\d{2}$/.test(c) || /^\d{2}\/\d{2}\/\d{4}$/.test(c)) {
+                            lastDate = c;
+                        }
+                    });
+
+                    const name = String(row[1] || row[0] || "").trim();
+                    if (name && !name.toLowerCase().includes("name") && !name.toLowerCase().includes("total") && !name.toLowerCase().includes("sr no")) {
+                        const nextId = staticRecords.reduce((max, r) => Math.max(max, r.id || 0), 0) + 1;
+                        const mob = String(row[3] || row[4] || "").replace(/\.0$/, "").trim();
+                        const idNum = String(row[2] || "").trim();
+                        const remark = String(row[5] || row[6] || "").trim();
+                        staticRecords.unshift({
+                            id: nextId,
+                            service_type: svcType !== "auto" ? svcType : "ucaadhar",
+                            record_date: lastDate,
+                            name: name,
+                            mobile: mob,
+                            normalized_mobile: mob.replace(/\D/g, "").slice(-10),
+                            id_number: idNum,
+                            pan_type: "",
+                            status: "InProcess",
+                            fee_amt: parseFloat(row[4]) || 0.0,
+                            total_amt: parseFloat(row[4]) || 0.0,
+                            remark: remark,
+                            is_baki: remark.toUpperCase().includes("BAKI") ? 1 : 0
+                        });
+                        imported++;
+                    }
+                });
+
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(staticRecords));
+                showToast(`Successfully imported ${imported} records!`, "success");
+                closeModal("modal-upload");
+                selectedUploadFile = null;
+                document.getElementById("file-input").value = "";
+                document.getElementById("selected-file-name").classList.add("hidden");
+                await loadDailyProgress();
+                await fetchRecords(1);
+            } catch (err) {
+                showToast("Failed to parse file: " + err.message, "error");
+            } finally {
+                progressBox.classList.add("hidden");
+                submitBtn.disabled = false;
+            }
+        };
+        reader.readAsArrayBuffer(selectedUploadFile);
+        return;
+    }
+
     try {
         const res = await fetch("/api/upload", {
             method: "POST",
@@ -854,6 +1134,30 @@ async function openFilesModal() {
     openModal("modal-files");
     const container = document.getElementById("files-list-container");
     container.innerHTML = '<div class="text-center py-6 text-slate-400 text-xs">Loading files...</div>';
+
+    if (isStaticMode) {
+        container.innerHTML = `
+            <div class="space-y-2">
+                <div class="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800 flex items-center justify-between">
+                    <span>📁 <strong>Demo 1: UC Aadhaar</strong> (380 preloaded records)</span>
+                    <span class="text-xs px-2 py-0.5 rounded bg-emerald-200 font-bold">Active</span>
+                </div>
+                <div class="p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-800 flex items-center justify-between">
+                    <span>📁 <strong>Demo 2: Aadhaar Online</strong> (147 preloaded records)</span>
+                    <span class="text-xs px-2 py-0.5 rounded bg-blue-200 font-bold">Active</span>
+                </div>
+                <div class="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 flex items-center justify-between">
+                    <span>📁 <strong>Demo 3: PAN Card</strong> (41 preloaded records)</span>
+                    <span class="text-xs px-2 py-0.5 rounded bg-amber-200 font-bold">Active</span>
+                </div>
+                <div class="p-3 bg-purple-50 border border-purple-200 rounded-xl text-xs text-purple-800 flex items-center justify-between">
+                    <span>📁 <strong>Demo 4: Ayushman Card</strong> (49 preloaded records)</span>
+                    <span class="text-xs px-2 py-0.5 rounded bg-purple-200 font-bold">Active</span>
+                </div>
+            </div>
+        `;
+        return;
+    }
 
     try {
         const res = await fetch("/api/files");
@@ -925,6 +1229,62 @@ async function confirmDeleteFile(fileId, filename) {
 
 function exportCurrentView(format = "excel") {
     const params = getSearchParams();
+
+    if (isStaticMode) {
+        let records = staticRecords.slice();
+        if (params.service_type && params.service_type !== "all") {
+            records = records.filter(r => (r.service_type || "").toLowerCase() === params.service_type.toLowerCase());
+        }
+        if (params.date) {
+            records = records.filter(r => (r.record_date || "").startsWith(params.date));
+        }
+
+        if (format === "excel" && window.XLSX) {
+            const wsData = records.map((r, i) => ({
+                "Sr No": i + 1,
+                "Service": (r.service_type || "").toUpperCase(),
+                "Date": r.record_date || "",
+                "Name": r.name || "",
+                "ID Number": r.id_number || "",
+                "Mobile No": r.mobile || "",
+                "Status": r.status || "",
+                "Amount": r.fee_amt || 0,
+                "Remarks": r.remark || ""
+            }));
+            const wb = XLSX.utils.book_new();
+            const ws = XLSX.utils.json_to_sheet(wsData);
+            XLSX.utils.book_append_sheet(wb, ws, "Records");
+            XLSX.writeFile(wb, `Khodal_${params.service_type || "ALL"}_Export.xlsx`);
+            showToast("Excel exported successfully!", "success");
+            return;
+        }
+
+        // CSV export
+        let csv = "Sr No,Service,Date,Name,ID Number,Mobile No,Status,Amount,Remarks\n";
+        records.forEach((r, idx) => {
+            const row = [
+                idx + 1,
+                `"${(r.service_type || '').toUpperCase()}"`,
+                `"${r.record_date || ''}"`,
+                `"${(r.name || '').replace(/"/g, '""')}"`,
+                `"${r.id_number || ''}"`,
+                `"${r.mobile || ''}"`,
+                `"${r.status || ''}"`,
+                r.fee_amt || 0,
+                `"${(r.remark || '').replace(/"/g, '""')}"`
+            ];
+            csv += row.join(",") + "\n";
+        });
+        const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `Khodal_${params.service_type || 'all'}_Export.csv`;
+        a.click();
+        showToast("CSV exported successfully!", "success");
+        return;
+    }
+
     const queryStr = new URLSearchParams();
     if (params.service_type) queryStr.append("service_type", params.service_type);
     if (params.name) queryStr.append("name", params.name);

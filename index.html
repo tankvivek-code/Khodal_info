@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Khodal Office Hub | Daily Service Tracker & Fast Search</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eef2ff',
+                            100: '#e0e7ff',
+                            200: '#c7d2fe',
+                            300: '#a5b4fc',
+                            400: '#818cf8',
+                            500: '#6366f1',
+                            600: '#4f46e5',
+                            700: '#4338ca',
+                            800: '#3730a3',
+                            900: '#312e81',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- SheetJS for client-side Excel reading & export -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="static/css/custom.css">
+</head>
+<body class="bg-slate-100 text-slate-800 min-h-screen flex flex-col antialiased">
+
+    <!-- TOP NAV HEADER -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <!-- Branding -->
+                <div class="flex items-center gap-3">
+                    <div class="h-10 w-10 rounded-xl bg-gradient-to-tr from-brand-700 to-indigo-500 flex items-center justify-center text-white shadow-md shadow-brand-500/20">
+                        <i data-lucide="layers" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <h1 class="text-lg font-bold text-slate-900 tracking-tight">KHODAL</h1>
+                            <span class="text-xs px-2 py-0.5 font-bold rounded-full bg-brand-50 text-brand-700 border border-brand-200">Daily Office Hub</span>
+                        </div>
+                        <p class="text-xs text-slate-500">UC Aadhaar • Aadhaar Online • PAN Card • Ayushman</p>
+                    </div>
+                </div>
+
+                <!-- Right Action Bar -->
+                <div class="flex items-center gap-2 sm:gap-3">
+                    <!-- LAN Share Pill -->
+                    <div id="lan-share-box" class="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-800">
+                        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+                        <span>Office LAN: <strong id="lan-url-display" class="font-mono">Loading...</strong></span>
+                        <button onclick="copyShareUrl()" title="Copy Link to Share in Office" class="hover:text-emerald-950 p-1 rounded hover:bg-emerald-100 transition">
+                            <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                        </button>
+                    </div>
+
+                    <!-- Files Manager Button -->
+                    <button onclick="openFilesModal()" class="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition border border-slate-200">
+                        <i data-lucide="folder-archive" class="w-4 h-4 text-slate-600"></i>
+                        <span class="hidden sm:inline">Files</span>
+                    </button>
+
+                    <!-- Add Record Button -->
+                    <button onclick="openAddRecordModal()" class="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg shadow-2xs hover:shadow transition">
+                        <i data-lucide="plus-circle" class="w-4 h-4 text-brand-600"></i>
+                        <span class="hidden sm:inline">New Entry</span>
+                    </button>
+
+                    <!-- Upload Daily Data Button -->
+                    <button onclick="openUploadModal()" class="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-brand-600 hover:bg-brand-700 rounded-lg shadow-sm hover:shadow transition">
+                        <i data-lucide="upload-cloud" class="w-4 h-4"></i>
+                        <span>Upload Daily Data</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- MAIN DASHBOARD CONTENT -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 flex-1 w-full space-y-5">
+
+        <!-- 1. SERVICE TABS (Field Division) -->
+        <div class="bg-white rounded-xl border border-slate-200 shadow-xs p-1.5 flex items-center justify-between overflow-x-auto">
+            <div class="flex items-center gap-1 sm:gap-2">
+                <!-- All Services -->
+                <button onclick="switchServiceTab('all')" id="tab-all" class="service-tab-btn active px-3.5 py-2 rounded-lg text-xs font-bold transition flex items-center gap-2 bg-brand-600 text-white shadow-2xs">
+                    <i data-lucide="layout-grid" class="w-4 h-4"></i>
+                    <span>All Services</span>
+                    <span id="tab-badge-all" class="px-1.5 py-0.2 rounded-full text-[10px] bg-white/20 text-white font-mono">0</span>
+                </button>
+
+                <!-- Demo 1: UC Aadhaar -->
+                <button onclick="switchServiceTab('ucaadhar')" id="tab-ucaadhar" class="service-tab-btn px-3.5 py-2 rounded-lg text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-blue-500"></span>
+                    <span>🪪 UC Aadhaar (SID)</span>
+                    <span id="tab-badge-ucaadhar" class="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-200 text-slate-700 font-mono">0</span>
+                </button>
+
+                <!-- Demo 2: Aadhaar Online -->
+                <button onclick="switchServiceTab('aadhar_online')" id="tab-aadhar_online" class="service-tab-btn px-3.5 py-2 rounded-lg text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                    <span>🌐 Aadhaar Online (SRN)</span>
+                    <span id="tab-badge-aadhar_online" class="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-200 text-slate-700 font-mono">0</span>
+                </button>
+
+                <!-- Demo 3: PAN Card -->
+                <button onclick="switchServiceTab('pancard')" id="tab-pancard" class="service-tab-btn px-3.5 py-2 rounded-lg text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-amber-500"></span>
+                    <span>💳 PAN Card</span>
+                    <span id="tab-badge-pancard" class="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-200 text-slate-700 font-mono">0</span>
+                </button>
+
+                <!-- Demo 4: Ayushman Card -->
+                <button onclick="switchServiceTab('aayushman')" id="tab-aayushman" class="service-tab-btn px-3.5 py-2 rounded-lg text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-purple-500"></span>
+                    <span>🏥 Ayushman Card</span>
+                    <span id="tab-badge-aayushman" class="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-200 text-slate-700 font-mono">0</span>
+                </button>
+            </div>
+
+            <!-- Export Buttons on Right -->
+            <div class="hidden md:flex items-center gap-2 pl-4 border-l border-slate-200">
+                <button onclick="exportCurrentView('excel')" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition" title="Export current filtered view to Excel">
+                    <i data-lucide="download" class="w-3.5 h-3.5"></i>
+                    <span>Export Excel</span>
+                </button>
+                <button onclick="exportCurrentView('csv')" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-lg transition" title="Export to CSV">
+                    <i data-lucide="file-text" class="w-3.5 h-3.5"></i>
+                    <span>CSV</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- 2. DAILY PROGRESS & STATUS TRACKER BAR -->
+        <div class="bg-white rounded-xl border border-slate-200 shadow-xs p-5 space-y-4">
+            <!-- Header with Date Selector -->
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                <div class="flex items-center gap-2.5">
+                    <div class="p-2 bg-indigo-50 text-indigo-700 rounded-lg">
+                        <i data-lucide="calendar-check-2" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <h2 class="text-sm font-bold text-slate-900">Daily Work Progress & Overview</h2>
+                        <p class="text-xs text-slate-500">Select any date to check daily progress, completed tasks, and pending dues</p>
+                    </div>
+                </div>
+
+                <!-- Date Picker & Quick Date Selector -->
+                <div class="flex items-center gap-2">
+                    <div class="relative">
+                        <select id="quick-date-selector" onchange="onDateSelectorChange(this.value)" class="text-xs font-semibold bg-slate-50 hover:bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-700 outline-hidden focus:ring-2 focus:ring-brand-500">
+                            <option value="">All Dates (Overview)</option>
+                        </select>
+                    </div>
+                    <button onclick="setTodayDate()" class="px-2.5 py-2 text-xs font-semibold bg-brand-50 text-brand-700 hover:bg-brand-100 border border-brand-200 rounded-lg transition">
+                        Today
+                    </button>
+                    <button onclick="resetDateFilter()" class="px-2.5 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 border border-slate-200 rounded-lg transition" title="View all dates">
+                        <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Progress Metric Cards Grid -->
+            <div class="grid grid-cols-2 md:grid-cols-5 gap-3.5">
+                <!-- Total Applications -->
+                <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+                    <p class="text-xs font-semibold text-slate-500">Total Applications</p>
+                    <div class="flex items-baseline gap-2 mt-1">
+                        <h3 id="stat-progress-total" class="text-2xl font-black text-slate-900">0</h3>
+                        <span id="stat-progress-date-pill" class="text-[11px] font-mono font-medium text-slate-400">All</span>
+                    </div>
+                </div>
+
+                <!-- Completed -->
+                <div class="p-3.5 rounded-xl bg-emerald-50/70 border border-emerald-200 cursor-pointer hover:bg-emerald-100/60 transition" onclick="filterByStatusQuick('Completed')" title="Click to view only Completed">
+                    <div class="flex items-center justify-between">
+                        <p class="text-xs font-semibold text-emerald-800">Completed Work</p>
+                        <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-600"></i>
+                    </div>
+                    <div class="flex items-baseline gap-2 mt-1">
+                        <h3 id="stat-progress-completed" class="text-2xl font-black text-emerald-900">0</h3>
+                        <span id="stat-progress-rate" class="text-xs font-bold text-emerald-700 px-1.5 py-0.5 rounded-md bg-emerald-200/60 font-mono">0%</span>
+                    </div>
+                </div>
+
+                <!-- In-Process -->
+                <div class="p-3.5 rounded-xl bg-amber-50/70 border border-amber-200 cursor-pointer hover:bg-amber-100/60 transition" onclick="filterByStatusQuick('InProcess')" title="Click to view only In-Process">
+                    <div class="flex items-center justify-between">
+                        <p class="text-xs font-semibold text-amber-800">In-Process / Pending</p>
+                        <i data-lucide="clock-3" class="w-4 h-4 text-amber-600"></i>
+                    </div>
+                    <div class="flex items-baseline gap-2 mt-1">
+                        <h3 id="stat-progress-inprocess" class="text-2xl font-black text-amber-900">0</h3>
+                        <span class="text-[11px] text-amber-700">active</span>
+                    </div>
+                </div>
+
+                <!-- Baki / Action Required -->
+                <div class="p-3.5 rounded-xl bg-rose-50/80 border border-rose-200 cursor-pointer hover:bg-rose-100/60 transition" onclick="toggleBakiFilter()" title="Click to filter BAKI & NOT RECEIVED cases">
+                    <div class="flex items-center justify-between">
+                        <p class="text-xs font-semibold text-rose-800">Baki / Dues / Action</p>
+                        <i data-lucide="alert-triangle" class="w-4 h-4 text-rose-600"></i>
+                    </div>
+                    <div class="flex items-baseline gap-2 mt-1">
+                        <h3 id="stat-progress-baki" class="text-2xl font-black text-rose-900">0</h3>
+                        <span id="baki-active-badge" class="text-[11px] font-bold text-rose-700 px-1.5 py-0.5 rounded-md bg-rose-200/60">pending</span>
+                    </div>
+                </div>
+
+                <!-- Fees Collected -->
+                <div class="p-3.5 rounded-xl bg-indigo-50/70 border border-indigo-200 col-span-2 md:col-span-1">
+                    <div class="flex items-center justify-between">
+                        <p class="text-xs font-semibold text-indigo-800">Total Fees / Total</p>
+                        <i data-lucide="banknote" class="w-4 h-4 text-indigo-600"></i>
+                    </div>
+                    <div class="flex items-baseline gap-1 mt-1">
+                        <span class="text-base font-bold text-indigo-700">₹</span>
+                        <h3 id="stat-progress-fees" class="text-2xl font-black text-indigo-950">0</h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. SEARCH & FILTER CONTROLS -->
+        <div class="bg-white rounded-xl border border-slate-200 shadow-xs p-5 space-y-4">
+            <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="search" class="w-4 h-4 text-brand-600"></i>
+                    <h2 class="text-xs font-bold text-slate-800 uppercase tracking-wider">Instant Multi-Field Search</h2>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button onclick="resetAllFilters()" class="text-xs font-medium text-slate-500 hover:text-slate-800 px-2.5 py-1 rounded hover:bg-slate-100 transition inline-flex items-center gap-1">
+                        <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i> Clear Search
+                    </button>
+                </div>
+            </div>
+
+            <!-- Search Inputs Row -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                <!-- Search by Name -->
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1">Search by Name</label>
+                    <div class="relative">
+                        <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                            <i data-lucide="user" class="w-4 h-4"></i>
+                        </span>
+                        <input type="text" id="search-name" placeholder="e.g. Khunt, Patel, Jadwani..."
+                            class="w-full pl-9 pr-8 py-2 text-xs sm:text-sm bg-slate-50 focus:bg-white border border-slate-200 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 rounded-lg transition outline-hidden"
+                            oninput="triggerSearchDebounced()">
+                        <button id="clear-name" onclick="clearInput('search-name')" class="hidden absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 hover:text-slate-600">
+                            <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Search by Mobile Number -->
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1">Search by Mobile Number</label>
+                    <div class="relative">
+                        <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                            <i data-lucide="phone" class="w-4 h-4"></i>
+                        </span>
+                        <input type="text" id="search-mobile" placeholder="e.g. 81283, 9328318876..."
+                            class="w-full pl-9 pr-8 py-2 text-xs sm:text-sm bg-slate-50 focus:bg-white border border-slate-200 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 rounded-lg transition outline-hidden"
+                            oninput="triggerSearchDebounced()">
+                        <button id="clear-mobile" onclick="clearInput('search-mobile')" class="hidden absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 hover:text-slate-600">
+                            <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Search by ID (SID / SRN / Card No) -->
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1">Search by SID / SRN / Card No</label>
+                    <div class="relative">
+                        <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                            <i data-lucide="hash" class="w-4 h-4"></i>
+                        </span>
+                        <input type="text" id="search-id" placeholder="e.g. S131114, S14879, PAJY..."
+                            class="w-full pl-9 pr-8 py-2 text-xs sm:text-sm bg-slate-50 focus:bg-white border border-slate-200 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 rounded-lg transition outline-hidden font-mono"
+                            oninput="triggerSearchDebounced()">
+                        <button id="clear-id" onclick="clearInput('search-id')" class="hidden absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 hover:text-slate-600">
+                            <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Status Filter Dropdown -->
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1">Filter by Status / Progress</label>
+                    <div class="relative">
+                        <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                            <i data-lucide="filter" class="w-4 h-4"></i>
+                        </span>
+                        <select id="filter-status" onchange="triggerSearchDebounced()"
+                            class="w-full pl-9 pr-3 py-2 text-xs sm:text-sm bg-slate-50 focus:bg-white border border-slate-200 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 rounded-lg transition outline-hidden appearance-none cursor-pointer">
+                            <option value="all">All Progress Statuses</option>
+                            <option value="completed">Completed Only</option>
+                            <option value="inprocess">In-Process / Pending Only</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 4. DATA RECORDS TABLE CONTAINER -->
+        <div class="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
+            <!-- Table Header Strip -->
+            <div class="px-5 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/70">
+                <div class="flex items-center gap-2">
+                    <span id="active-service-title" class="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                        All Office Records
+                    </span>
+                    <span id="badge-total-records" class="px-2 py-0.5 text-xs font-semibold rounded-full bg-brand-100 text-brand-800 font-mono">
+                        0 records
+                    </span>
+                </div>
+
+                <!-- Rows per page selector -->
+                <div class="flex items-center gap-2 text-xs text-slate-500">
+                    <span>Rows:</span>
+                    <select id="select-page-size" onchange="changePageSize(this.value)" class="border border-slate-200 rounded px-2 py-1 bg-white text-slate-700 outline-hidden focus:border-brand-500">
+                        <option value="25" selected>25</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Table Dynamic Content -->
+            <div class="overflow-x-auto min-h-[350px] relative">
+                <table class="w-full text-left text-sm text-slate-600">
+                    <thead id="records-table-head" class="bg-slate-50 text-xs font-semibold text-slate-600 uppercase tracking-wider border-b border-slate-200">
+                        <!-- Injected by JS based on current service type tab -->
+                    </thead>
+                    <tbody id="records-table-body" class="divide-y divide-slate-100 font-sans">
+                        <!-- Dynamic Records Injected -->
+                    </tbody>
+                </table>
+
+                <!-- Loading Spinner -->
+                <div id="table-loading-spinner" class="hidden absolute inset-0 bg-white/70 backdrop-blur-2xs flex items-center justify-center">
+                    <div class="flex flex-col items-center gap-2">
+                        <div class="w-8 h-8 border-3 border-brand-600 border-t-transparent rounded-full animate-spin"></div>
+                        <span class="text-xs font-medium text-slate-600">Loading records...</span>
+                    </div>
+                </div>
+
+                <!-- Empty State -->
+                <div id="table-empty-state" class="hidden py-16 px-4 text-center">
+                    <div class="w-16 h-16 bg-slate-100 text-slate-400 rounded-full flex items-center justify-center mx-auto mb-3">
+                        <i data-lucide="file-question" class="w-8 h-8"></i>
+                    </div>
+                    <h3 class="text-base font-semibold text-slate-800">No Records Found</h3>
+                    <p class="text-xs text-slate-500 max-w-sm mx-auto mt-1">
+                        Try clearing search terms or selecting "All Dates".
+                    </p>
+                    <button onclick="resetAllFilters()" class="mt-4 px-4 py-2 text-xs font-semibold text-brand-700 bg-brand-50 hover:bg-brand-100 border border-brand-200 rounded-lg transition">
+                        Reset Filters
+                    </button>
+                </div>
+            </div>
+
+            <!-- Table Pagination Bar -->
+            <div class="px-5 py-3 border-t border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-600">
+                <div>
+                    Showing <span id="page-start-idx" class="font-semibold text-slate-800">0</span> to 
+                    <span id="page-end-idx" class="font-semibold text-slate-800">0</span> of 
+                    <span id="page-total-items" class="font-semibold text-slate-800">0</span> records
+                </div>
+                <div class="flex items-center gap-1.5">
+                    <button id="btn-prev-page" onclick="goToPage(currentPage - 1)" class="px-3 py-1.5 rounded-md border border-slate-300 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed font-medium transition inline-flex items-center gap-1">
+                        <i data-lucide="chevron-left" class="w-3.5 h-3.5"></i> Prev
+                    </button>
+                    <span class="px-3 py-1 font-semibold text-slate-800">
+                        Page <span id="current-page-num">1</span> of <span id="total-pages-num">1</span>
+                    </span>
+                    <button id="btn-next-page" onclick="goToPage(currentPage + 1)" class="px-3 py-1.5 rounded-md border border-slate-300 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed font-medium transition inline-flex items-center gap-1">
+                        Next <i data-lucide="chevron-right" class="w-3.5 h-3.5"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- FOOTER -->
+    <footer class="bg-white border-t border-slate-200 py-4 mt-8">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500">
+            <div>
+                <strong>Khodal Office Data Hub</strong> &mdash; UC Aadhaar, Aadhaar Online, PAN Card, Ayushman Card
+            </div>
+            <div>
+                Local SQLite Database • Ready for Daily Office Excel & CSV Imports
+            </div>
+        </div>
+    </footer>
+
+    <!-- ========================================================================= -->
+    <!-- MODAL 1: DAILY EXCEL / CSV UPLOAD -->
+    <!-- ========================================================================= -->
+    <div id="modal-upload" class="hidden fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-lg w-full overflow-hidden">
+            <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <div class="p-2 bg-brand-50 text-brand-600 rounded-lg">
+                        <i data-lucide="upload-cloud" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-base font-bold text-slate-900">Upload Daily Excel / CSV</h3>
+                        <p class="text-xs text-slate-500">Import records for any of the 4 office services</p>
+                    </div>
+                </div>
+                <button onclick="closeModal('modal-upload')" class="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <div class="p-6 space-y-4">
+                <!-- Select Service Category -->
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1">Select Service Category</label>
+                    <select id="upload-service-select" class="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:ring-2 focus:ring-brand-500 outline-hidden">
+                        <option value="auto">✨ Automatic Detection (Recommended)</option>
+                        <option value="ucaadhar">🪪 Demo 1: UC Aadhaar (SID Number, Total Amt)</option>
+                        <option value="aadhar_online">🌐 Demo 2: Aadhaar Online (SRN Number, Remark)</option>
+                        <option value="pancard">💳 Demo 3: PAN Card (New / Update PAN)</option>
+                        <option value="aayushman">🏥 Demo 4: Ayushman Card (Ration Card No)</option>
+                    </select>
+                </div>
+
+                <!-- Dropzone Area -->
+                <div id="dropzone"
+                     class="border-2 border-dashed border-slate-300 hover:border-brand-500 rounded-xl p-8 text-center bg-slate-50 hover:bg-brand-50/30 transition cursor-pointer"
+                     onclick="document.getElementById('file-input').click()">
+                    <input type="file" id="file-input" class="hidden" accept=".xlsx, .xls, .csv" onchange="handleFileSelect(event)">
+                    <div class="w-12 h-12 rounded-full bg-brand-100 text-brand-600 flex items-center justify-center mx-auto mb-3">
+                        <i data-lucide="file-up" class="w-6 h-6"></i>
+                    </div>
+                    <h4 class="text-sm font-semibold text-slate-800">Click or Drag & Drop Excel / CSV</h4>
+                    <p class="text-xs text-slate-500 mt-1">Supports date divider rows (e.g. 2026-10-01,,,,) automatically</p>
+                    <span id="selected-file-name" class="inline-block mt-3 px-3 py-1 bg-white border border-slate-200 rounded-full text-xs font-mono font-medium text-slate-700 hidden"></span>
+                </div>
+
+                <!-- Progress Bar -->
+                <div id="upload-progress-container" class="hidden space-y-2">
+                    <div class="flex justify-between text-xs font-semibold text-slate-700">
+                        <span>Importing & Indexing records...</span>
+                        <span class="animate-pulse">Please wait</span>
+                    </div>
+                    <div class="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
+                        <div class="bg-brand-600 h-2 rounded-full animate-pulse" style="width: 100%"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-3">
+                <button onclick="closeModal('modal-upload')" class="px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-200 rounded-lg transition">
+                    Cancel
+                </button>
+                <button id="btn-submit-upload" onclick="submitFileUpload()" disabled class="px-5 py-2 text-xs font-semibold text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg shadow-sm transition inline-flex items-center gap-1.5">
+                    <i data-lucide="check" class="w-4 h-4"></i>
+                    <span>Start Import</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- MODAL 2: ADD / EDIT ENTRY MODAL -->
+    <!-- ========================================================================= -->
+    <div id="modal-record-form" class="hidden fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-lg w-full overflow-hidden">
+            <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <div class="p-2 bg-brand-50 text-brand-600 rounded-lg">
+                        <i data-lucide="edit-3" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <h3 id="record-form-title" class="text-base font-bold text-slate-900">New Entry</h3>
+                        <p class="text-xs text-slate-500">Record an office transaction</p>
+                    </div>
+                </div>
+                <button onclick="closeModal('modal-record-form')" class="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <form id="record-form" onsubmit="handleRecordFormSubmit(event)" class="p-6 space-y-3.5">
+                <input type="hidden" id="form-record-id">
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">Service Type *</label>
+                        <select id="form-service-type" required class="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-brand-500 outline-hidden">
+                            <option value="ucaadhar">🪪 UC Aadhaar</option>
+                            <option value="aadhar_online">🌐 Aadhaar Online</option>
+                            <option value="pancard">💳 PAN Card</option>
+                            <option value="aayushman">🏥 Ayushman Card</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">Date *</label>
+                        <input type="date" id="form-date" required class="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-brand-500 outline-hidden">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">Customer / Person Name *</label>
+                        <input type="text" id="form-name" required placeholder="Full Name"
+                            class="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-brand-500 outline-hidden">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">Mobile Number</label>
+                        <input type="text" id="form-mobile" placeholder="10-digit Mobile No"
+                            class="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-brand-500 outline-hidden">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">SID / SRN / Card No</label>
+                        <input type="text" id="form-id-number" placeholder="e.g. S131114... / PAJY..."
+                            class="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-brand-500 outline-hidden font-mono">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">Status / Progress</label>
+                        <select id="form-status" class="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-brand-500 outline-hidden">
+                            <option value="Completed">Completed</option>
+                            <option value="InProcess">InProcess / Pending</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">PAN Type (If PAN)</label>
+                        <input type="text" id="form-pan-type" placeholder="NEW PAN or PAN UPDATE"
+                            class="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-brand-500 outline-hidden">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">Fee / Total (₹)</label>
+                        <input type="number" step="any" id="form-fee" placeholder="e.g. 200, 100"
+                            class="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-brand-500 outline-hidden">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1">Remark / Notes (e.g. HOF, 200 BAKI, SPEED)</label>
+                    <input type="text" id="form-remark" placeholder="Remarks or dues..."
+                        class="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-brand-500 outline-hidden">
+                </div>
+
+                <div class="pt-3 border-t border-slate-100 flex items-center justify-end gap-3">
+                    <button type="button" onclick="closeModal('modal-record-form')" class="px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 rounded-lg transition">
+                        Cancel
+                    </button>
+                    <button type="submit" class="px-5 py-2 text-xs font-semibold text-white bg-brand-600 hover:bg-brand-700 rounded-lg shadow-sm transition">
+                        Save Entry
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- MODAL 3: VIEW RECORD DETAILS -->
+    <!-- ========================================================================= -->
+    <div id="modal-view-record" class="hidden fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-lg w-full overflow-hidden">
+            <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/70">
+                <div class="flex items-center gap-3">
+                    <div id="view-avatar" class="w-10 h-10 rounded-xl bg-brand-600 text-white font-bold text-base flex items-center justify-center shadow-xs">
+                        K
+                    </div>
+                    <div>
+                        <h3 id="view-name" class="text-base font-bold text-slate-900">Name</h3>
+                        <span id="view-service-badge" class="text-xs px-2 py-0.5 rounded-full font-semibold uppercase bg-slate-100 text-slate-700">SERVICE</span>
+                    </div>
+                </div>
+                <button onclick="closeModal('modal-view-record')" class="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <div class="p-6 space-y-4">
+                <!-- WhatsApp & Call -->
+                <div class="grid grid-cols-3 gap-2">
+                    <a id="btn-view-whatsapp" target="_blank" href="#" class="flex flex-col items-center justify-center py-2 px-3 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl text-emerald-800 transition">
+                        <i data-lucide="message-circle" class="w-5 h-5 text-emerald-600 mb-1"></i>
+                        <span class="text-xs font-semibold">WhatsApp</span>
+                    </a>
+                    <a id="btn-view-call" href="#" class="flex flex-col items-center justify-center py-2 px-3 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl text-indigo-800 transition">
+                        <i data-lucide="phone-call" class="w-5 h-5 text-indigo-600 mb-1"></i>
+                        <span class="text-xs font-semibold">Call</span>
+                    </a>
+                    <button onclick="copyCurrentViewCard()" class="flex flex-col items-center justify-center py-2 px-3 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-xl text-slate-800 transition">
+                        <i data-lucide="copy" class="w-5 h-5 text-slate-600 mb-1"></i>
+                        <span class="text-xs font-semibold">Copy Card</span>
+                    </button>
+                </div>
+
+                <!-- Fields -->
+                <div class="bg-slate-50 rounded-xl p-4 border border-slate-200 space-y-2 text-xs">
+                    <div class="flex justify-between items-center py-1 border-b border-slate-200">
+                        <span class="text-slate-500 font-medium">Date:</span>
+                        <span id="view-date" class="font-bold text-slate-900 font-mono">-</span>
+                    </div>
+                    <div class="flex justify-between items-center py-1 border-b border-slate-200">
+                        <span class="text-slate-500 font-medium">SID / SRN / Card No:</span>
+                        <span id="view-id-num" class="font-bold text-brand-700 font-mono select-all">-</span>
+                    </div>
+                    <div class="flex justify-between items-center py-1 border-b border-slate-200">
+                        <span class="text-slate-500 font-medium">Mobile Number:</span>
+                        <span id="view-mobile" class="font-bold text-slate-900 font-mono">-</span>
+                    </div>
+                    <div class="flex justify-between items-center py-1 border-b border-slate-200">
+                        <span class="text-slate-500 font-medium">Progress Status:</span>
+                        <span id="view-status" class="font-semibold text-slate-800">-</span>
+                    </div>
+                    <div id="view-row-fee" class="flex justify-between items-center py-1 border-b border-slate-200">
+                        <span class="text-slate-500 font-medium">Fee / Total Amt:</span>
+                        <span id="view-fee" class="font-bold text-emerald-700">-</span>
+                    </div>
+                    <div class="flex justify-between items-center py-1">
+                        <span class="text-slate-500 font-medium">Remark / Notes:</span>
+                        <span id="view-remark" class="font-medium text-slate-900">-</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="px-6 py-3.5 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-xs">
+                <span class="text-slate-500 font-mono">Record #<span id="view-record-id"></span></span>
+                <button onclick="closeModal('modal-view-record')" class="px-4 py-2 font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 transition">
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- MODAL 4: FILES MANAGEMENT MODAL -->
+    <!-- ========================================================================= -->
+    <div id="modal-files" class="hidden fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-2xl w-full overflow-hidden">
+            <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <div class="p-2 bg-emerald-50 text-emerald-600 rounded-lg">
+                        <i data-lucide="folder-spreadsheet" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-base font-bold text-slate-900">Uploaded Office Files</h3>
+                        <p class="text-xs text-slate-500">History of daily Excel and CSV uploads</p>
+                    </div>
+                </div>
+                <button onclick="closeModal('modal-files')" class="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <div class="p-6 max-h-[60vh] overflow-y-auto">
+                <div id="files-list-container" class="space-y-3">
+                    <!-- Files dynamically injected -->
+                </div>
+            </div>
+
+            <div class="px-6 py-3.5 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-xs">
+                <button onclick="openUploadModal(); closeModal('modal-files');" class="font-semibold text-brand-600 hover:text-brand-800 inline-flex items-center gap-1">
+                    <i data-lucide="plus" class="w-4 h-4"></i> Upload New File
+                </button>
+                <button onclick="closeModal('modal-files')" class="px-4 py-2 font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 transition">
+                    Done
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- FLOATING TOAST CONTAINER -->
+    <div id="toast-container"></div>
+
+    <!-- Frontend Script -->
+    <script src="static/js/app.js"></script>
+</body>
+</html>

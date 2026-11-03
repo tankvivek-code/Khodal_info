@@ -335,15 +335,21 @@ async def export_csv(
     )
 
 
-# Serve single page UI
+# Serve single page UI and data assets
+DATA_DIR = os.path.join(BASE_DIR, "data")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+if os.path.exists(DATA_DIR):
+    app.mount("/data", StaticFiles(directory=DATA_DIR), name="data")
 
 
 @app.get("/")
 async def serve_index():
-    index_path = os.path.join(STATIC_DIR, "index.html")
-    if os.path.exists(index_path):
-        return FileResponse(index_path)
+    root_index = os.path.join(BASE_DIR, "index.html")
+    if os.path.exists(root_index):
+        return FileResponse(root_index)
+    static_index = os.path.join(STATIC_DIR, "index.html")
+    if os.path.exists(static_index):
+        return FileResponse(static_index)
     return HTMLResponse("<h1>Khodal Office Hub: index.html not found</h1>")
 
 
