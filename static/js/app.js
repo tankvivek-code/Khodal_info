@@ -98,27 +98,37 @@ try {
 
 let isStaticMode = window.location.hostname.includes("github.io") || window.location.protocol === "file:";
 let staticRecords = [];
-const STORAGE_KEY = "khodal_records_store_v4";
-const FILES_STORAGE_KEY = "khodal_files_list_v4";
+const STORAGE_KEY = "khodal_records_store_v5";
+const FILES_STORAGE_KEY = "khodal_files_list_v5";
+
+// Purge any legacy default/dummy data stores from previous versions
+(function purgeLegacyData() {
+    const legacyKeys = [
+        "khodal_records_store_v4", "khodal_files_list_v4",
+        "khodal_records_store_v3", "khodal_files_list_v3",
+        "khodal_records_store_v2", "khodal_files_list_v2",
+        "khodal_records_store_v1", "khodal_files_list_v1",
+        "khodal_records_store", "khodal_files_list"
+    ];
+    legacyKeys.forEach(k => {
+        try { localStorage.removeItem(k); } catch (e) {}
+    });
+})();
 
 function getStaticFiles() {
     const saved = localStorage.getItem(FILES_STORAGE_KEY);
     if (saved) {
         try {
             const parsed = JSON.parse(saved);
-            if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+            if (Array.isArray(parsed)) return parsed;
         } catch (e) {}
-    }
-    if (window.KHODAL_INITIAL_FILES && Array.isArray(window.KHODAL_INITIAL_FILES) && window.KHODAL_INITIAL_FILES.length > 0) {
-        saveStaticFiles(window.KHODAL_INITIAL_FILES);
-        return window.KHODAL_INITIAL_FILES;
     }
     return [];
 }
 
 function saveStaticFiles(filesList) {
     try {
-        localStorage.setItem(FILES_STORAGE_KEY, JSON.stringify(filesList));
+        localStorage.setItem(FILES_STORAGE_KEY, JSON.stringify(filesList || []));
     } catch (e) {}
 }
 
@@ -136,22 +146,17 @@ async function initDataStore() {
     }
 
     if (isStaticMode) {
-        console.log("⚡ Khodal Office Hub running in Client-Side Mode with Real Office Database");
+        console.log("⚡ Khodal Office Hub running in Client-Side Mode");
         const cached = localStorage.getItem(STORAGE_KEY);
         if (cached) {
             try {
                 const parsed = JSON.parse(cached);
-                if (Array.isArray(parsed) && parsed.length > 0) {
+                if (Array.isArray(parsed)) {
                     staticRecords = parsed;
                 }
             } catch (e) {}
-        }
-        if (staticRecords.length === 0 && window.KHODAL_RECORDS && Array.isArray(window.KHODAL_RECORDS) && window.KHODAL_RECORDS.length > 0) {
-            console.log(`⚡ Preloading ${window.KHODAL_RECORDS.length} real office records into local storage...`);
-            staticRecords = [...window.KHODAL_RECORDS];
-            try {
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(staticRecords));
-            } catch (e) {}
+        } else {
+            staticRecords = [];
         }
     }
 }
@@ -1697,15 +1702,6 @@ async function openFilesModal() {
         container.appendChild(card);
     });
 
-    const footerDiv = document.createElement("div");
-    footerDiv.className = "pt-2 flex justify-end";
-    footerDiv.innerHTML = `
-        <button onclick="restoreRealOfficeData()" class="text-xs text-brand-600 hover:text-brand-800 inline-flex items-center gap-1 font-semibold transition">
-            <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i> Reload Real Office Data (617 Records)
-        </button>
-    `;
-    container.appendChild(footerDiv);
-
     refreshIcons();
 }
 
@@ -1771,26 +1767,6 @@ async function clearAllRecordsData() {
     await loadDailyProgress();
     await openFilesModal();
     await fetchRecords(1);
-}
-
-async function restoreRealOfficeData() {
-    if (window.KHODAL_RECORDS && Array.isArray(window.KHODAL_RECORDS) && window.KHODAL_RECORDS.length > 0) {
-        staticRecords = [...window.KHODAL_RECORDS];
-        try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(staticRecords));
-        } catch (e) {}
-        if (window.KHODAL_INITIAL_FILES && Array.isArray(window.KHODAL_INITIAL_FILES)) {
-            saveStaticFiles(window.KHODAL_INITIAL_FILES);
-        }
-        showToast(`Reloaded ${staticRecords.length} real office records!`, "success");
-        await loadDailyProgress();
-        if (!document.getElementById("modal-files").classList.contains("hidden")) {
-            await openFilesModal();
-        }
-        await fetchRecords(1);
-    } else {
-        showToast("Real office data script not loaded.", "warning");
-    }
 }
 
 // =========================================================================
