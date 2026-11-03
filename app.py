@@ -17,6 +17,8 @@ import csv
 
 from database import (
     init_db,
+    backup_database_json,
+    restore_database_json,
     add_uploaded_file,
     get_all_files,
     get_file_by_id,
@@ -53,16 +55,13 @@ def get_local_ip() -> str:
     """Detect LAN IP address so office coworkers can connect."""
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.settimeout(0.2)
+        s.settimeout(0.1)
         s.connect(("8.8.8.8", 80))
         ip = s.getsockname()[0]
         s.close()
         return ip
     except Exception:
-        try:
-            return socket.gethostbyname(socket.gethostname())
-        except Exception:
-            return "127.0.0.1"
+        return "127.0.0.1"
 
 
 @asynccontextmanager
@@ -372,6 +371,37 @@ async def export_csv(
         media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="Khodal_{service_type}_Export.csv"'}
     )
+
+
+
+@app.get("/api/database/backup")
+async def download_database_backup():
+    """Download complete database backup with all files and records."""
+    data = backup_database_json()
+    timestamp = datetime.now().strftime("%d-%m-%Y_%H%M")
+    filename = f"Khodal_Office_DB_Backup_{timestamp}.json"
+    content = json.dumps(data, ensure_ascii=False, indent=2)
+    return StreamingResponse(
+        io.BytesIO(content.encode("utf-8")),
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
+
+
+@app.post("/api/database/restore")
+async def restore_database_backup(file: UploadFile = File(...)):
+    """Restore database from uploaded JSON backup file."""
+    try:
+        content = await file.read()
+        payload = json.loads(content.decode("utf-8"))
+        res = restore_database_json(payload)
+        return {
+            "status": "success",
+            "message": f"Successfully restored {res.get('records_restored', 0)} records and {res.get('files_restored', 0)} files!",
+            **res
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to restore backup: {str(e)}")
 
 
 # Serve single page UI and data assets

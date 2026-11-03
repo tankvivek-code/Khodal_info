@@ -16,6 +16,166 @@ def get_db_connection() -> sqlite3.Connection:
     return conn
 
 
+def normalize_date_for_db(val: Any) -> str:
+    if not val:
+        return datetime.now().strftime("%Y-%m-%d")
+    s = str(val).strip()
+    if not s or s == "-" or s.lower() == "nan":
+        return ""
+    # Match DD-MM-YYYY or DD/MM/YYYY
+    m1 = re.match(r"^(\d{1,2})[-/](\d{1,2})[-/](\d{4})", s)
+    if m1:
+        return f"{m1.group(3)}-{int(m1.group(2)):02d}-{int(m1.group(1)):02d}"
+    # Match YYYY-MM-DD or YYYY-DD-MM (Excel US-locale flip for Oct/Nov)
+    m2 = re.match(r"^(\d{4})[-/](\d{1,2})[-/](\d{1,2})", s)
+    if m2:
+        y = m2.group(1)
+        p1 = int(m2.group(2))
+        p2 = int(m2.group(3))
+        if p2 == 10 and 1 <= p1 <= 12:
+            return f"{y}-10-{p1:02d}"
+        if p2 == 11 and 1 <= p1 <= 12:
+            return f"{y}-11-{p1:02d}"
+        return f"{y}-{p1:02d}-{p2:02d}"
+    return s[:10]
+
+
+def sync_db_to_static_files():
+    """
+    Synchronizes all records and files from the SQLite database to:
+    1. data/records.json
+    2. data/records.js (window.KHODAL_RECORDS and window.KHODAL_INITIAL_FILES)
+    3. data/backups/khodal_backup_latest.json
+    This ensures that even if a client clears browser cache or history,
+    records are permanently preserved on disk and automatically recovered.
+    """
+    try:
+        data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+        os.makedirs(data_dir, exist_ok=True)
+        backup_dir = os.path.join(data_dir, "backups")
+        os.makedirs(backup_dir, exist_ok=True)
+
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM uploaded_files ORDER BY id ASC")
+            files = [dict(r) for r in cursor.fetchall()]
+            cursor.execute("SELECT * FROM office_records ORDER BY id ASC")
+            records = [dict(r) for r in cursor.fetchall()]
+
+        json_path = os.path.join(data_dir, "records.json")
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(records, f, ensure_ascii=False)
+
+        js_path = os.path.join(data_dir, "records.js")
+        with open(js_path, "w", encoding="utf-8") as f:
+            f.write(f"window.KHODAL_RECORDS = {json.dumps(records, ensure_ascii=False)};\n")
+            f.write(f"window.KHODAL_INITIAL_FILES = {json.dumps(files, ensure_ascii=False)};\n")
+
+        # Rolling latest backup
+        latest_backup = os.path.join(backup_dir, "khodal_backup_latest.json")
+        backup_payload = {
+            "version": "1.0",
+            "synced_at": datetime.now().isoformat(),
+            "total_files": len(files),
+            "total_records": len(records),
+            "files": files,
+            "records": records
+        }
+        with open(latest_backup, "w", encoding="utf-8") as f:
+            json.dump(backup_payload, f, ensure_ascii=False, indent=2)
+
+        return True
+    except Exception as e:
+        print(f"Error in sync_db_to_static_files: {e}")
+        return False
+
+
+def backup_database_json() -> Dict[str, Any]:
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM uploaded_files ORDER BY id ASC")
+        files = [dict(r) for r in cursor.fetchall()]
+        cursor.execute("SELECT * FROM office_records ORDER BY id ASC")
+        records = [dict(r) for r in cursor.fetchall()]
+    return {
+        "version": "1.0",
+        "exported_at": datetime.now().isoformat(),
+        "total_files": len(files),
+        "total_records": len(records),
+        "files": files,
+        "records": records
+    }
+
+
+def restore_database_json(data: Dict[str, Any]) -> Dict[str, int]:
+    records = data.get("records") or []
+    files = data.get("files") or []
+    if not records and not files and isinstance(data, list):
+        records = data
+        files = []
+
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM office_records;")
+        cursor.execute("DELETE FROM uploaded_files;")
+
+        for f in files:
+            cursor.execute(
+                """
+                INSERT OR REPLACE INTO uploaded_files (id, filename, service_type, file_date, stored_path, file_size, row_count, uploaded_at, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    f.get("id"),
+                    f.get("filename", "restored_file.xlsx"),
+                    f.get("service_type", "general"),
+                    f.get("file_date", ""),
+                    f.get("stored_path", ""),
+                    f.get("file_size", 0),
+                    f.get("row_count", 0),
+                    f.get("uploaded_at", datetime.now().isoformat()),
+                    f.get("status", "completed")
+                )
+            )
+
+        for r in records:
+            raw_mob = str(r.get("mobile") or "").strip()
+            norm_mob = "".join(filter(str.isdigit, raw_mob))
+            rec_d = normalize_date_for_db(r.get("record_date"))
+            cursor.execute(
+                """
+                INSERT OR REPLACE INTO office_records (
+                    id, file_id, service_type, record_date, name, mobile,
+                    normalized_mobile, id_number, pan_type, status, total_amt,
+                    fee_amt, remark, is_baki, extra_data, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    r.get("id"),
+                    r.get("file_id"),
+                    r.get("service_type", "ucaadhar"),
+                    rec_d,
+                    str(r.get("name") or "").strip(),
+                    raw_mob,
+                    norm_mob,
+                    str(r.get("id_number") or "").strip(),
+                    str(r.get("pan_type") or "").strip(),
+                    str(r.get("status") or "Completed").strip(),
+                    float(r.get("total_amt", 0.0) or 0.0),
+                    float(r.get("fee_amt", 0.0) or 0.0),
+                    str(r.get("remark") or "").strip(),
+                    int(r.get("is_baki", 0) or 0),
+                    json.dumps(r.get("extra_data", {})) if isinstance(r.get("extra_data"), dict) else str(r.get("extra_data") or "{}"),
+                    r.get("created_at", datetime.now().isoformat()),
+                    datetime.now().isoformat()
+                )
+            )
+        conn.commit()
+
+    sync_db_to_static_files()
+    return {"files_restored": len(files), "records_restored": len(records)}
+
+
 def init_db():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     with get_db_connection() as conn:
@@ -84,7 +244,8 @@ def add_uploaded_file(filename: str, service_type: str, file_date: str, stored_p
             (filename, service_type, file_date, stored_path, file_size, row_count, datetime.now().isoformat())
         )
         conn.commit()
-        return cursor.lastrowid
+    sync_db_to_static_files()
+    return cursor.lastrowid
 
 
 def update_file_row_count(file_id: int, row_count: int):
@@ -123,29 +284,20 @@ def delete_uploaded_file(file_id: int) -> bool:
         cursor.execute("DELETE FROM office_records WHERE file_id = ?", (file_id,))
         cursor.execute("DELETE FROM uploaded_files WHERE id = ?", (file_id,))
         conn.commit()
-        return True
+    sync_db_to_static_files()
+    return True
 
 
 def clear_all_database_records() -> bool:
     with get_db_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT stored_path FROM uploaded_files")
-        uploads_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "uploads"))
-        for row in cursor.fetchall():
-            p = row["stored_path"]
-            if p and os.path.exists(p):
-                abs_p = os.path.abspath(p)
-                if abs_p.startswith(uploads_dir):
-                    try:
-                        os.remove(abs_p)
-                    except OSError:
-                        pass
         cursor.execute("DELETE FROM office_records;")
         cursor.execute("DELETE FROM uploaded_files;")
         conn.commit()
         cursor.execute("VACUUM;")
         conn.commit()
-        return True
+    sync_db_to_static_files()
+    return True
 
 
 def insert_bulk_records(records: List[Dict[str, Any]]) -> int:
@@ -173,7 +325,7 @@ def insert_bulk_records(records: List[Dict[str, Any]]) -> int:
         rows.append((
             r.get("file_id"),
             r.get("service_type", "general"),
-            str(r.get("record_date") or "").strip(),
+            normalize_date_for_db(r.get("record_date")),
             str(r.get("name") or "").strip(),
             raw_mob,
             norm_mob,
@@ -202,7 +354,8 @@ def insert_bulk_records(records: List[Dict[str, Any]]) -> int:
             rows
         )
         conn.commit()
-        return len(rows)
+    sync_db_to_static_files()
+    return len(rows)
 
 
 def insert_single_record(r: Dict[str, Any]) -> int:
@@ -235,7 +388,7 @@ def insert_single_record(r: Dict[str, Any]) -> int:
             (
                 r.get("file_id"),
                 r.get("service_type", "ucaadhar"),
-                str(r.get("record_date") or datetime.now().strftime("%Y-%m-%d")).strip(),
+                normalize_date_for_db(r.get("record_date")),
                 str(r.get("name") or "").strip(),
                 raw_mob,
                 norm_mob,
@@ -252,7 +405,8 @@ def insert_single_record(r: Dict[str, Any]) -> int:
             )
         )
         conn.commit()
-        return cursor.lastrowid
+    sync_db_to_static_files()
+    return cursor.lastrowid
 
 
 def update_single_record(record_id: int, r: Dict[str, Any]) -> bool:
@@ -284,7 +438,7 @@ def update_single_record(record_id: int, r: Dict[str, Any]) -> bool:
             """,
             (
                 r.get("service_type", "ucaadhar"),
-                str(r.get("record_date") or "").strip(),
+                normalize_date_for_db(r.get("record_date")),
                 str(r.get("name") or "").strip(),
                 raw_mob,
                 norm_mob,
@@ -300,7 +454,8 @@ def update_single_record(record_id: int, r: Dict[str, Any]) -> bool:
             )
         )
         conn.commit()
-        return cursor.rowcount > 0
+    sync_db_to_static_files()
+    return cursor.rowcount > 0
 
 
 def delete_single_record(record_id: int) -> bool:
@@ -308,7 +463,8 @@ def delete_single_record(record_id: int) -> bool:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM office_records WHERE id = ?", (record_id,))
         conn.commit()
-        return cursor.rowcount > 0
+    sync_db_to_static_files()
+    return cursor.rowcount > 0
 
 
 def update_record_status(record_id: int, new_status: str) -> bool:
@@ -320,7 +476,8 @@ def update_record_status(record_id: int, new_status: str) -> bool:
             (new_status, now, record_id)
         )
         conn.commit()
-        return cursor.rowcount > 0
+    sync_db_to_static_files()
+    return cursor.rowcount > 0
 
 
 def search_records(

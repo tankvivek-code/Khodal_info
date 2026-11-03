@@ -85,6 +85,9 @@ function formatDateDisplay(val) {
         if (p2 === 10 && p1 >= 1 && p1 <= 12) {
             return `${String(p1).padStart(2, '0')}-10-${y}`;
         }
+        if (p2 === 11 && p1 >= 1 && p1 <= 12) {
+            return `${String(p1).padStart(2, '0')}-11-${y}`;
+        }
         return `${String(p2).padStart(2, '0')}-${String(p1).padStart(2, '0')}-${y}`;
     }
 
@@ -114,7 +117,14 @@ function formatDateDisplay(val) {
 
 function normalizeDateToIso(val) {
     if (!val) return "";
+    if (val instanceof Date && !isNaN(val)) {
+        const y = val.getFullYear();
+        const m = String(val.getMonth() + 1).padStart(2, '0');
+        const d = String(val.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+    }
     const s = String(val).trim();
+    if (!s || s === "-" || s.toLowerCase() === "nan") return "";
     const mDm = s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
     if (mDm) {
         return `${mDm[3]}-${String(mDm[2]).padStart(2, '0')}-${String(mDm[1]).padStart(2, '0')}`;
@@ -127,27 +137,15 @@ function normalizeDateToIso(val) {
         if (p2 === 10 && p1 >= 1 && p1 <= 12) {
             return `${y}-10-${String(p1).padStart(2, '0')}`;
         }
+        if (p2 === 11 && p1 >= 1 && p1 <= 12) {
+            return `${y}-11-${String(p1).padStart(2, '0')}`;
+        }
         return `${y}-${String(p1).padStart(2, '0')}-${String(p2).padStart(2, '0')}`;
     }
     return s;
 }
 
-function boot() {
-    initApp();
-    setupDropzone();
-    setupWindowDragAndDrop();
-    setupKeyboardListeners();
-}
 
-if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", boot);
-} else {
-    boot();
-}
-
-window.addEventListener("load", () => {
-    refreshIcons();
-});
 
 // =========================================================================
 // HYBRID DATA STORE (Seamless GitHub Pages & Static Mode Support)
@@ -186,8 +184,12 @@ function getStaticFiles() {
     if (saved) {
         try {
             const parsed = JSON.parse(saved);
-            if (Array.isArray(parsed)) return parsed;
+            if (Array.isArray(parsed) && parsed.length > 0) return parsed;
         } catch (e) {}
+    }
+    if (window.KHODAL_INITIAL_FILES && Array.isArray(window.KHODAL_INITIAL_FILES) && window.KHODAL_INITIAL_FILES.length > 0) {
+        saveStaticFiles(window.KHODAL_INITIAL_FILES);
+        return window.KHODAL_INITIAL_FILES;
     }
     return [];
 }
@@ -211,31 +213,58 @@ async function initDataStore() {
         }
     }
 
+    updateDatabaseStatusBadge();
+
     if (isStaticMode) {
-        console.log("⚡ Khodal Office Hub running in Client-Side Mode");
+        console.log("⚡ Khodal Office Hub running in Protected Client-Side Mode");
+        if (navigator.storage && navigator.storage.persist) {
+            navigator.storage.persist().then(p => {
+                if (p) console.log("🛡️ Storage is marked PERSISTENT.");
+            }).catch(() => {});
+        }
+
         const cached = localStorage.getItem(STORAGE_KEY);
+        let loaded = false;
         if (cached) {
             try {
                 const parsed = JSON.parse(cached);
-                if (Array.isArray(parsed)) {
+                if (Array.isArray(parsed) && parsed.length > 0) {
                     staticRecords = parsed;
-                    let modified = false;
-                    staticRecords.forEach(r => {
-                        if (r.record_date) {
-                            const norm = normalizeDateToIso(r.record_date);
-                            if (norm !== r.record_date) {
-                                r.record_date = norm;
-                                modified = true;
-                            }
-                        }
-                    });
-                    if (modified) {
-                        localStorage.setItem(STORAGE_KEY, JSON.stringify(staticRecords));
-                    }
+                    loaded = true;
                 }
             } catch (e) {}
-        } else {
-            staticRecords = [];
+        }
+
+        // AUTO-RECOVERY from permanent database seed file (data/records.js)
+        if (!loaded || staticRecords.length === 0) {
+            if (window.KHODAL_RECORDS && Array.isArray(window.KHODAL_RECORDS) && window.KHODAL_RECORDS.length > 0) {
+                console.log(`🛡️ Auto-recovering ${window.KHODAL_RECORDS.length} records from permanent database file!`);
+                staticRecords = JSON.parse(JSON.stringify(window.KHODAL_RECORDS));
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(staticRecords));
+                if (window.KHODAL_INITIAL_FILES) {
+                    saveStaticFiles(window.KHODAL_INITIAL_FILES);
+                }
+                setTimeout(() => {
+                    showToast(`🛡️ All ${staticRecords.length} client records safely auto-recovered from permanent database!`, "success");
+                }, 700);
+            } else {
+                staticRecords = [];
+            }
+        }
+
+        // Auto-heal dates in staticRecords
+        let modified = false;
+        staticRecords.forEach(r => {
+            if (r.record_date) {
+                const norm = normalizeDateToIso(r.record_date);
+                if (norm !== r.record_date) {
+                    r.record_date = norm;
+                    modified = true;
+                }
+            }
+        });
+        if (modified) {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(staticRecords));
         }
     }
 }
@@ -2362,3 +2391,142 @@ function showToast(message, type = "info") {
         setTimeout(() => toast.remove(), 250);
     }, 3800);
 }
+
+
+// =========================================================================
+// PERMANENT DATABASE BACKUP & RESTORE
+// =========================================================================
+function updateDatabaseStatusBadge() {
+    const banner = document.getElementById("db-storage-status-banner");
+    const textEl = document.getElementById("db-status-text");
+    if (!textEl) return;
+    if (!isStaticMode) {
+        textEl.innerHTML = `<strong>🟢 SQLite Disk Database Active:</strong> All records are stored permanently on disk (<code>data/khodal_office.db</code>). Clearing browser history will <strong>never</strong> delete your records.`;
+    } else {
+        textEl.innerHTML = `<strong>🛡️ Protected Database Active:</strong> Auto-recovered from permanent disk seed. Total <strong>${staticRecords.length}</strong> records safe.`;
+    }
+}
+
+async function backupDatabase() {
+    showToast("Preparing database backup...", "info");
+    if (!isStaticMode) {
+        window.location.href = "/api/database/backup";
+        setTimeout(() => {
+            showToast("Database backup downloaded successfully!", "success");
+        }, 800);
+        return;
+    }
+
+    try {
+        const files = getStaticFiles();
+        const payload = {
+            version: "1.0",
+            exported_at: new Date().toISOString(),
+            total_files: files.length,
+            total_records: staticRecords.length,
+            files: files,
+            records: staticRecords
+        };
+        const str = JSON.stringify(payload, null, 2);
+        const blob = new Blob([str], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        const todayStr = new Date().toISOString().split("T")[0];
+        a.href = url;
+        a.download = `Khodal_Office_DB_Backup_${todayStr}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showToast(`Saved backup with ${staticRecords.length} records!`, "success");
+    } catch (e) {
+        showToast(`Backup error: ${e.message}`, "error");
+    }
+}
+
+async function handleRestoreBackupFile(event) {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+
+    if (!confirm(`Are you sure you want to restore database from ${file.name}? This will safely update your client records.`)) {
+        event.target.value = "";
+        return;
+    }
+
+    showToast("Restoring database from backup file...", "info");
+
+    if (!isStaticMode) {
+        const formData = new FormData();
+        formData.append("file", file);
+        try {
+            const resp = await fetch("/api/database/restore", {
+                method: "POST",
+                body: formData
+            });
+            const data = await resp.json();
+            if (resp.ok) {
+                showToast(data.message || "Database restored successfully!", "success");
+                await initApp();
+                closeFilesModal();
+            } else {
+                showToast(data.detail || "Failed to restore database", "error");
+            }
+        } catch (e) {
+            showToast(`Restore error: ${e.message}`, "error");
+        }
+        event.target.value = "";
+        return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = async function(e) {
+        try {
+            const parsed = JSON.parse(e.target.result);
+            let recs = parsed.records || [];
+            let files = parsed.files || [];
+            if (!recs && Array.isArray(parsed)) recs = parsed;
+
+            if (!Array.isArray(recs) || recs.length === 0) {
+                showToast("No valid records found in the backup file.", "error");
+                return;
+            }
+
+            recs.forEach(r => {
+                if (r.record_date) r.record_date = normalizeDateToIso(r.record_date);
+            });
+
+            staticRecords = recs;
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(staticRecords));
+            saveStaticFiles(files);
+
+            showToast(`Successfully restored ${recs.length} records and ${files.length} files!`, "success");
+            await loadDailyProgress();
+            await fetchRecords(1);
+            renderStaticFilesList();
+            updateDatabaseStatusBadge();
+            closeFilesModal();
+        } catch (err) {
+            showToast(`Invalid backup JSON file: ${err.message}`, "error");
+        }
+        event.target.value = "";
+    };
+    reader.readAsText(file);
+}
+
+// Initialize application after all components and stores are defined
+function boot() {
+    initApp();
+    setupDropzone();
+    setupWindowDragAndDrop();
+    setupKeyboardListeners();
+}
+
+if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", boot);
+} else {
+    boot();
+}
+
+window.addEventListener("load", () => {
+    refreshIcons();
+});
