@@ -8,40 +8,55 @@ from datetime import datetime
 from typing import List, Dict, Any, Tuple, Optional
 
 DATE_REGEX = re.compile(r"(\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}[-/]\d{1,2}[-/]\d{2,4})")
-PHONE_REGEX = re.compile(r"\b[6-9]\d{9}\b")
+PHONE_REGEX = re.compile(r"\b([6-9]\d{9})\b")
+SID_REGEX = re.compile(r"\b(S\d{15,30})\b", re.I)
+SID_DATE_REGEX = re.compile(r"S\d{10,14}(202[0-9])(0[1-9]|1[0-2])([0-3][0-9])")
+
+STATUS_MAP = {
+    "COMPLETED": "Completed",
+    "COMPLETE": "Completed",
+    "INPROCESS": "InProcess",
+    "IN PROCESS": "InProcess",
+    "PROCESS": "InProcess",
+    "REJECT": "Reject",
+    "REJECTED": "Reject",
+    "PENDING": "Pending",
+}
+
+NON_NAME_WORDS = {
+    "NAME", "ADDRESS", "MOBILE", "MO", "MOB", "PHONE", "SPEED", "NEW", "RIPIT", "REPEAT",
+    "OK", "NOT RECIV", "NOT RICIV", "NO RECIV", "CALL NOT PICKUP", "CALL NOT RECEIVRD",
+    "MANISH ID", "BRIJAL ID", "TOTAL", "STATUS", "SLNO", "ENROLMENT_NO_DATE", "SID NUMBER",
+    "OTHERS", "REMARK", "FEE", "ADD CHANGE THAY GAYU CHHE", "NAME CHANGE", "NAME CHANJ",
+    "CHIRAG JARIYA", "DHARMESH JARIYA", "DHARSH JARIYA", "MO NO BAKI", "PAYMENT BAKI"
+}
 
 
-def clean_header_name(header: str) -> str:
+def clean_header_name(header: Any) -> str:
     s = str(header).lower().strip()
     s = re.sub(r"[_\-\.\(\)\[\]\/\\:]+", " ", s)
     return " ".join(s.split())
 
 
-def detect_service_type_from_content(headers: List[str], file_path: str) -> str:
-    cleaned = [clean_header_name(h) for h in headers]
-    joined = " ".join(cleaned)
-
-    if any("sid" in h or "enrolment" in h or "enrollment" in h for h in cleaned):
-        return "ucaadhar"
-    if any("srn" in h for h in cleaned):
-        return "aadhar_online"
-    if any("pan change" in h or "pan new" in h or "pancard" in h for h in cleaned):
-        return "pancard"
-    if any("ration" in h or "aayushman" in h or "ayushman" in h for h in cleaned):
-        return "aayushman"
-
-    # Check filename
-    fname = os.path.basename(file_path).lower()
-    if "ucaadhar" in fname or "uc_aadhar" in fname or "sid" in fname or "enrol" in fname:
-        return "ucaadhar"
-    if "aadhar_online" in fname or "online_aadhar" in fname or "srn" in fname:
-        return "aadhar_online"
-    if "pan" in fname:
-        return "pancard"
-    if "aayushman" in fname or "ayushman" in fname or "ration" in fname:
-        return "aayushman"
-
-    return "general"
+def clean_phone(val: Any) -> Tuple[str, str]:
+    if pd.isna(val) or val is None:
+        return "", ""
+    s = str(val).strip()
+    if s.endswith(".0"):
+        s = s[:-2]
+    if "e+" in s.lower():
+        try:
+            s = f"{int(float(s))}"
+        except Exception:
+            pass
+    digits = re.sub(r"\D", "", s)
+    if len(digits) == 12 and digits.startswith("91"):
+        digits = digits[2:]
+    elif len(digits) == 11 and digits.startswith("0"):
+        digits = digits[1:]
+    m = PHONE_REGEX.search(digits)
+    norm = m.group(1) if m else (digits if len(digits) == 10 else "")
+    return s, norm
 
 
 def normalize_date_str(val: Any) -> str:
@@ -62,25 +77,47 @@ def normalize_date_str(val: Any) -> str:
             year = parts[2]
             if len(year) == 2:
                 year = f"20{year}"
-            elif len(year) == 3: # e.g. 206 -> 2026
+            elif len(year) == 3:
                 year = "2026"
             return f"{year}-{int(parts[1]):02d}-{int(parts[0]):02d}"
     return s
 
 
-def clean_phone(val: Any) -> Tuple[str, str]:
-    if pd.isna(val) or val is None:
-        return "", ""
-    s = str(val).strip()
-    if s.endswith(".0"):
-        s = s[:-2]
-    if "e+" in s.lower():
-        try:
-            s = f"{int(float(s))}"
-        except Exception:
-            pass
-    digits = re.sub(r"\D", "", s)
-    return s, digits
+def extract_date_from_sid(sid: str) -> str:
+    """
+    Aadhaar SID enrolment numbers contain the exact timestamp:
+    S<operator_id><YYYYMMDDHHMMSS>.
+    Extract YYYY-MM-DD directly from the SID timestamp.
+    """
+    if not sid:
+        return ""
+    m = SID_DATE_REGEX.search(sid)
+    if m:
+        return f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
+    return ""
+
+
+def detect_service_type_from_content(headers: List[str], file_path: str) -> str:
+    cleaned = [clean_header_name(h) for h in headers]
+    if any("sid" in h or "enrolment" in h or "enrollment" in h for h in cleaned):
+        return "ucaadhar"
+    if any("srn" in h for h in cleaned):
+        return "aadhar_online"
+    if any("pan change" in h or "pan new" in h or "pancard" in h for h in cleaned):
+        return "pancard"
+    if any("ration" in h or "aayushman" in h or "ayushman" in h for h in cleaned):
+        return "aayushman"
+
+    fname = os.path.basename(file_path).lower()
+    if "ucaadhar" in fname or "uc_aadhar" in fname or "sid" in fname:
+        return "ucaadhar"
+    if "aadhar_online" in fname or "online_aadhar" in fname or "srn" in fname:
+        return "aadhar_online"
+    if "pan" in fname:
+        return "pancard"
+    if "aayushman" in fname or "ayushman" in fname or "ration" in fname:
+        return "aayushman"
+    return "general"
 
 
 def parse_single_sheet_df(
@@ -90,7 +127,6 @@ def parse_single_sheet_df(
     sheet_name: str = "",
     forced_service: Optional[str] = None
 ) -> Tuple[List[Dict[str, Any]], str, List[str]]:
-    # Convert df to list of row lists, preserving header row if present
     raw_rows = []
     cols_as_str = [str(c).strip() for c in df.columns]
     if any(not c.isdigit() and str(c).lower() != "nan" and not c.startswith("Unnamed:") for c in cols_as_str):
@@ -98,7 +134,6 @@ def parse_single_sheet_df(
     for _, r in df.iterrows():
         raw_rows.append([str(val).strip() if pd.notna(val) and val is not None and str(val).lower() != "nan" else "" for val in r.values])
 
-    # Check if sheet_name itself suggests a service
     sheet_name_clean = clean_header_name(sheet_name)
     inferred_service = None
     if "srn" in sheet_name_clean or "online" in sheet_name_clean:
@@ -160,74 +195,105 @@ def parse_single_sheet_df(
         idx_remark = find_c("remark", "others", "note")
 
     for row_vals in raw_rows:
-        if not any(row_vals):
+        cells = [str(c).strip() if c is not None and str(c).strip() and str(c).lower() != "nan" else "" for c in row_vals]
+        if not any(cells):
             continue
 
-        joined = " ".join(row_vals).upper()
+        joined = " ".join(cells).upper()
 
-        # Check if header row
-        if any(k in joined for k in ["ENROLMENT", "SID NUMBER", "SRN", "RATION CARD", "PAN CHANGE"]) or (
-            any(row_vals[i].upper() in ["NO", "SLNO", "SR NO", "SRNO"] for i in range(min(2, len(row_vals))))
-            and any(k in joined for k in ["NAME", "STATUS", "TOTAL", "SID", "DATE"])
-        ):
-            update_columns(row_vals)
-            continue
+        # Check if row has an actual Aadhaar SID
+        has_sid = any(re.search(r"\bS\d{15,}", c, re.I) for c in cells)
 
-        if not headers:
-            update_columns(["SLNO", "ENROLMENT", "STATUS", "TOTAL", "FEE", "OTHERS"])
-
-        # Check date divider
-        has_status = any(st in joined for st in ["COMPLETED", "COMPLET", "INPROCESS", "IN PROCESS", "REJECT", "PENDING"])
-        date_candidates = [normalize_date_str(v) for v in row_vals if normalize_date_str(v) and len(str(v).strip()) <= 15]
-
-        if date_candidates and not has_status:
-            first_cell = row_vals[0].replace(".0", "").strip() if row_vals else ""
-            if not first_cell.isdigit() or len(first_cell) > 4:
-                current_date = date_candidates[0]
+        # Check if table header row (only if not an actual SID record)
+        if not has_sid:
+            header_keywords = [
+                r"\bNAME\b", r"\bPARTY\b", r"\bDATE\b", r"\bMOBILE\b", r"\bMO\b", r"\bPHONE\b",
+                r"\bSRN\b", r"\bSID\b", r"\bPAN\b", r"\bSTATUS\b", r"\bREMARK\b", r"\bTOTAL\b",
+                r"\bFEE\b", r"\bRATION\b", r"\bAYUSHMAN\b", r"\bSLNO\b", r"\bSR NO\b", r"\bENROLMENT\b"
+            ]
+            kw_matches = sum(1 for kw in header_keywords if re.search(kw, joined))
+            if kw_matches >= 2 and any(re.search(kw, joined) for kw in [r"\bNAME\b", r"\bPARTY\b", r"\bSRN\b", r"\bSID\b", r"\bPAN\b", r"\bRATION\b", r"\bENROLMENT\b", r"\bSLNO\b", r"\bSTATUS\b"]):
+                update_columns(cells)
                 continue
 
-        # Subtotal row check: no status, no SID regex, and all non-empty are digits
-        non_empty = [s for s in row_vals if s]
-        if not has_status and not any(re.search(r"\bS\d{10,30}\b", s, re.I) for s in non_empty) and all(s.replace(".", "", 1).isdigit() for s in non_empty):
-            continue
+        # Check pure date divider row
+        non_empty = [c for c in cells if c]
+        if len(non_empty) <= 2:
+            d_cand = [normalize_date_str(c) for c in non_empty if normalize_date_str(c) and len(c) <= 15]
+            if d_cand:
+                current_date = d_cand[0]
+                continue
 
+        # Check pure subtotal / divider row (e.g. 1350.0, 1400.0, brijal id, MANISH ID, 4300, 65670)
+        has_sid = any(re.search(r"\bS\d{15,}", c) for c in non_empty)
+        if not has_sid:
+            if all(c.replace(".", "", 1).isdigit() for c in non_empty):
+                continue
+            if any(kw in joined for kw in ["BRIJAL ID", "MANISH ID", "TOTAL", "DIVIDER"]):
+                continue
+
+        # 1. Extract Date
         rec_date = current_date
-        if idx_date != -1 and idx_date < len(row_vals) and row_vals[idx_date]:
-            pd_date = normalize_date_str(row_vals[idx_date])
-            if pd_date:
-                rec_date = pd_date
-                current_date = pd_date
+        if idx_date != -1 and idx_date < len(cells) and cells[idx_date]:
+            d = normalize_date_str(cells[idx_date])
+            if d:
+                rec_date = d
+                current_date = d
 
-        name = row_vals[idx_name] if idx_name != -1 and idx_name < len(row_vals) else ""
+        # 2. Extract SID / SRN / ID Number & Name
+        name = ""
         id_num = ""
-        rec_sid = ""
+        sid = ""
+        srn = ""
+        ration_no = ""
+        pan_type = ""
 
-        for s in row_vals:
-            m_sid = re.search(r"\b(S\d{10,30})\b", s, re.I)
-            if m_sid:
-                rec_sid = m_sid.group(1)
+        # Check for Aadhaar SID
+        for c in cells:
+            m_s = re.search(r"\b(S\d{20,30})", c, re.I)
+            if m_s:
+                sid = m_s.group(1).upper()
                 break
 
-        if rec_sid:
-            id_num = rec_sid
-        elif idx_sid != -1 and idx_sid < len(row_vals) and row_vals[idx_sid]:
-            val = row_vals[idx_sid]
-            m_sid = re.search(r"\b(S\d{10,30})\b", val, re.I)
-            if m_sid:
-                id_num = m_sid.group(1)
-            elif not val.replace(".", "").isdigit():
-                if not name:
+        if sid:
+            id_num = sid
+            # Aadhaar SID timestamp is always 100% authoritative for date
+            sid_d = extract_date_from_sid(sid)
+            if sid_d:
+                rec_date = sid_d
+        elif idx_sid != -1 and idx_sid < len(cells) and cells[idx_sid]:
+            val = cells[idx_sid]
+            # SID / SRN must contain digits (e.g. S13..., SID999)
+            if any(ch.isdigit() for ch in val):
+                id_num = val
+                if id_num.upper().startswith("S") and len(id_num) >= 18:
+                    sid = id_num
+                else:
+                    srn = id_num
+            elif not name and not val.upper().startswith("COMPLET") and not val.upper().startswith("INPROCESS") and not val.upper().startswith("REJECT"):
+                if val.upper() not in NON_NAME_WORDS:
                     name = val
+        elif idx_srn != -1 and idx_srn < len(cells) and cells[idx_srn]:
+            id_num = cells[idx_srn]
+            srn = id_num
+        elif idx_ration != -1 and idx_ration < len(cells) and cells[idx_ration]:
+            id_num = cells[idx_ration]
+            ration_no = id_num
 
-        if idx_srn != -1 and idx_srn < len(row_vals) and row_vals[idx_srn]:
-            id_num = row_vals[idx_srn]
-        if idx_ration != -1 and idx_ration < len(row_vals) and row_vals[idx_ration]:
-            id_num = row_vals[idx_ration]
+        if idx_pan != -1 and idx_pan < len(cells):
+            pan_type = cells[idx_pan]
 
+        # 3. Status
         status = "Completed"
-        if idx_status != -1 and idx_status < len(row_vals) and row_vals[idx_status]:
-            raw_st = row_vals[idx_status].lower()
-            if "inprocess" in raw_st or "process" in raw_st:
+        if "REJECT" in joined:
+            status = "Reject"
+        elif "INPROCESS" in joined or "IN PROCESS" in joined:
+            status = "InProcess"
+        elif "PENDING" in joined:
+            status = "Pending"
+        elif idx_status != -1 and idx_status < len(cells) and cells[idx_status]:
+            raw_st = cells[idx_status].lower()
+            if "process" in raw_st:
                 status = "InProcess"
             elif "reject" in raw_st:
                 status = "Reject"
@@ -235,62 +301,140 @@ def parse_single_sheet_df(
                 status = "Pending"
             elif "complete" in raw_st:
                 status = "Completed"
-        else:
-            for s in row_vals:
-                sl = s.lower()
-                if "inprocess" in sl or "process" in sl:
-                    status = "InProcess"
-                    break
-                elif "reject" in sl:
-                    status = "Reject"
-                    break
-                elif "pending" in sl:
-                    status = "Pending"
-                    break
 
+        # 4. Total and Fee
         total_amt = 0.0
         fee_amt = 0.0
-        if idx_total != -1 and idx_total < len(row_vals) and row_vals[idx_total]:
-            try:
-                total_amt = float(row_vals[idx_total])
-            except Exception:
-                pass
-        if idx_fee != -1 and idx_fee < len(row_vals) and row_vals[idx_fee]:
-            try:
-                fee_amt = float(row_vals[idx_fee])
-            except Exception:
-                pass
-        elif idx_total != -1 and idx_total + 1 < len(row_vals) and row_vals[idx_total + 1]:
-            try:
-                fee_amt = float(row_vals[idx_total + 1])
-            except Exception:
-                pass
 
-        remark = row_vals[idx_remark] if idx_remark != -1 and idx_remark < len(row_vals) else ""
-        raw_mob = row_vals[idx_mobile] if idx_mobile != -1 and idx_mobile < len(row_vals) else ""
+        if idx_total != -1 and idx_total < len(cells) and cells[idx_total]:
+            try:
+                total_amt = float(cells[idx_total])
+            except Exception:
+                pass
+            if idx_fee != -1 and idx_fee < len(cells) and cells[idx_fee]:
+                try:
+                    fee_amt = float(cells[idx_fee])
+                except Exception:
+                    pass
+            elif idx_total + 1 < len(cells) and cells[idx_total + 1]:
+                try:
+                    fee_amt = float(cells[idx_total + 1])
+                except Exception:
+                    pass
+        else:
+            nums = []
+            for i, c in enumerate(cells):
+                if i == 0 and c.replace(".0", "").isdigit() and float(c) < 1000:
+                    continue
+                if re.match(r"^\d+(\.\d+)?$", c) and not PHONE_REGEX.match(c):
+                    val = float(c)
+                    if val <= 1000:
+                        nums.append((i, val))
+            if len(nums) >= 2:
+                total_amt = nums[0][1]
+                fee_amt = nums[1][1]
+            elif len(nums) == 1:
+                total_amt = nums[0][1]
+
+        # 5. Mobile
+        raw_mob = ""
+        if idx_mobile != -1 and idx_mobile < len(cells) and cells[idx_mobile]:
+            raw_mob = cells[idx_mobile]
         if not raw_mob:
-            m_ph = PHONE_REGEX.search(joined)
+            m_ph = PHONE_REGEX.search(joined.replace(".0", ""))
             if m_ph:
-                raw_mob = m_ph.group(0)
+                raw_mob = m_ph.group(1)
+            for i, c in enumerate(cells):
+                if c.upper() in ["MOBILE", "MO", "MOB"] and i + 1 < len(cells):
+                    m_next = PHONE_REGEX.search(cells[i+1].replace(".0", ""))
+                    if m_next:
+                        raw_mob = m_next.group(1)
 
-        pan_type = ""
-        if idx_pan != -1 and idx_pan < len(row_vals):
-            pan_type = row_vals[idx_pan]
+        disp_mob, norm_mob = clean_phone(raw_mob)
 
+        # 6. Name
+        if not name and idx_name != -1 and idx_name < len(cells) and cells[idx_name]:
+            c_name = cells[idx_name]
+            if not c_name.startswith("S1") and not re.search(r"\bS\d{15,}", c_name) and not c_name.replace(".", "").isdigit():
+                name = c_name
+
+        # Case A: Format 1 (Col 1 is SID, Col 2 is Name)
+        if not name and len(cells) > 2 and sid and (cells[1].upper().startswith("S1") or cells[0].upper().startswith("S1")):
+            sid_col = 1 if cells[1].upper().startswith("S1") else 0
+            cand_col = sid_col + 1
+            if cand_col < len(cells):
+                cand = cells[cand_col]
+                cand_u = cand.upper()
+                if cand and not cand_u.startswith("COMPLET") and not cand_u.startswith("INPROCESS") and not cand_u.startswith("REJECT") and not cand.replace(".", "").isdigit():
+                    name = cand
+
+        # Case B: Col 1 is Customer Name directly
+        if not name and len(cells) > 1:
+            cand = cells[1]
+            cand_u = cand.upper()
+            if cand and not cand.startswith("S1") and not cand_u.startswith("COMPLET") and not cand_u.startswith("INPROCESS") and not cand_u.startswith("REJECT") and not cand.replace(".", "").isdigit():
+                if cand_u not in NON_NAME_WORDS and not any(kw in cand_u for kw in ["ID", "TOTAL"]):
+                    name = cand
+
+        # Case C: Name labeled in later columns (e.g. col 5: 'NAME', col 6: 'MADHVI DHOKIYA')
         if not name:
-            m_nm = re.search(r"NAME[\s\-:]+([A-Za-z\s]+)", joined, re.I)
-            if m_nm:
-                name = m_nm.group(1).strip()
-        if not name and len(row_vals) > 5 and row_vals[5] and not row_vals[5].replace(".", "").isdigit():
-            c5_up = row_vals[5].upper()
-            if not any(kw in c5_up for kw in ["SPEED", "ADDRESS", "MOBILE", "RIPIT", "CALL"]):
-                name = row_vals[5]
-        if not name and id_num:
-            name = "Aadhaar Client"
+            for i, c in enumerate(cells):
+                if c.upper() in ["NAME", "NAME:"] and i + 1 < len(cells):
+                    next_c = cells[i + 1]
+                    if next_c and next_c.upper() not in NON_NAME_WORDS and not next_c.replace(".", "").isdigit():
+                        name = next_c
+                        break
 
-        # Determine service for this specific record
+        # Case D: Name in remarks column or update column
+        if not name:
+            for i in range(3, len(cells)):
+                c = cells[i]
+                c_u = c.upper()
+                if not c or c.replace(".", "").isdigit() or PHONE_REGEX.search(c):
+                    continue
+                if "/" in c:
+                    part0 = c.split("/")[0].strip()
+                    if len(part0.split()) >= 2 and part0.upper() not in NON_NAME_WORDS:
+                        name = part0
+                        break
+                elif "-" in c and "NAME" in c_u:
+                    clean_nm = re.sub(r"\bNAME\b", "", c, flags=re.I).replace("-", "").strip()
+                    if clean_nm:
+                        name = clean_nm
+                        break
+                elif len(c.split()) >= 2 and c_u not in NON_NAME_WORDS:
+                    name = c
+                    break
+
+        # If still no name, but valid SID
+        if not name and sid:
+            name = "—"
+
+        # 7. Remarks
+        remarks_list = []
+        if idx_remark != -1 and idx_remark < len(cells) and cells[idx_remark]:
+            remarks_list.append(cells[idx_remark])
+
+        for c in cells:
+            if not c:
+                continue
+            if c == name or c == id_num or c == disp_mob or c.replace(".0", "") == norm_mob:
+                continue
+            if c.upper() in ["COMPLETED", "INPROCESS", "IN PROCESS", "REJECT", "REJECTED", "PENDING"]:
+                continue
+            if c.replace(".", "", 1).isdigit() and float(c) < 1000:
+                continue
+            if c.upper() in ["NO", "SLNO", "SID NUMBER", "TOTAL", "STATUS", "NAME", "MOBILE"]:
+                continue
+            if c not in remarks_list:
+                remarks_list.append(c)
+
+        final_remark = " | ".join(dict.fromkeys(remarks_list))
+        is_baki = 1 if any(w in final_remark.lower() for w in ["baki", "not reciv", "not resiv", "no reciv"]) else 0
+
+        # Determine row-level service type
         row_svc = service_type
-        clean_id = id_num.strip().upper()
+        clean_id = (id_num or "").strip().upper()
         if not forced_service or forced_service == "auto":
             if clean_id.startswith("SID") or (clean_id.startswith("S") and len(clean_id) >= 18):
                 row_svc = "ucaadhar"
@@ -300,27 +444,21 @@ def parse_single_sheet_df(
                 row_svc = "pancard"
             elif idx_ration != -1:
                 row_svc = "aayushman"
-            elif idx_sid != -1:
-                row_svc = "ucaadhar"
-            elif idx_srn != -1:
-                row_svc = "aadhar_online"
 
-        if name or id_num or raw_mob:
-            display_mob, norm_mob = clean_phone(raw_mob)
-            is_baki = 1 if any(w in remark.lower() for w in ["baki", "not reciv", "not resiv", "no reciv", "payment baki", "name baki"]) else 0
+        if name or id_num or disp_mob:
             records.append({
                 "file_id": file_id,
                 "service_type": row_svc,
                 "record_date": rec_date,
                 "name": name,
-                "mobile": display_mob,
+                "mobile": disp_mob,
                 "normalized_mobile": norm_mob,
                 "id_number": id_num,
                 "pan_type": pan_type,
                 "status": status,
                 "total_amt": total_amt,
                 "fee_amt": fee_amt,
-                "remark": remark,
+                "remark": final_remark,
                 "is_baki": is_baki,
                 "extra_data": {}
             })
@@ -388,7 +526,7 @@ def parse_service_excel_or_csv(file_path: str, file_id: int, forced_service: Opt
             detected_services.append(svc)
             all_headers.extend(headers)
 
-    # Determine predominant service type
+    # Determine predominant service type across all extracted records
     if forced_service and forced_service != "auto":
         overall_service = forced_service
     elif all_records:
@@ -451,74 +589,103 @@ def export_records_to_excel(records: List[Dict[str, Any]], export_dir: str, serv
         bottom=Side(style="thin", color="E2E8F0")
     )
 
-    # Pick column headers based on service type
     if service_type == "ucaadhar":
-        headers = ["#", "Date", "SID Number", "Name", "Status", "Total Amt", "Fee Amt", "Mobile", "Others / Remarks"]
+        columns = ["No", "Date", "SID Number", "Customer Name", "Status", "Govt Total (Rs)", "Fee (Rs)", "Mobile Number", "Remarks"]
     elif service_type == "aadhar_online":
-        headers = ["#", "Date", "Name", "SRN Number", "Mobile No", "Status", "Remarks"]
+        columns = ["No", "Date", "Customer Name", "SRN Number", "Mobile Number", "Status", "Remarks"]
     elif service_type == "pancard":
-        headers = ["#", "Date", "Name", "PAN Change / New", "Mobile Number", "Status", "Remarks"]
+        columns = ["No", "Date", "Customer Name", "PAN Type", "Mobile Number", "Status", "Remarks"]
     elif service_type == "aayushman":
-        headers = ["#", "Date", "Ration / Ayushman No", "Name", "Mobile No", "Status", "Remarks"]
+        columns = ["No", "Date", "Ration / Ayushman No", "Customer Name", "Mobile Number", "Status", "Remarks"]
     else:
-        headers = ["#", "Service", "Date", "Name", "ID Number", "Mobile No", "Status / Type", "Fee", "Remarks"]
+        columns = ["No", "Service", "Date", "Customer Name", "ID / SID / SRN / Card No", "Mobile Number", "Status", "Fee (Rs)", "Remarks"]
 
-    ws.append(headers)
-
-    for col_idx, cell in enumerate(ws[1], start=1):
+    ws.append(columns)
+    for col_idx in range(1, len(columns) + 1):
+        cell = ws.cell(row=1, column=col_idx)
         cell.fill = header_fill
         cell.font = header_font
         cell.alignment = center_align
         cell.border = thin_border
-        ws.row_dimensions[1].height = 26
+    ws.row_dimensions[1].height = 26
 
-    # Write data
     for idx, r in enumerate(records, start=1):
-        dt_disp = format_date_dd_mm_yyyy(r.get("record_date", ""))
+        formatted_date = format_date_dd_mm_yyyy(r.get("record_date"))
         if service_type == "ucaadhar":
             row_data = [
-                idx, dt_disp, r.get("id_number", ""), r.get("name", ""),
-                r.get("status", ""), r.get("total_amt", 0.0), r.get("fee_amt", 0.0),
-                r.get("mobile", ""), r.get("remark", "")
+                idx,
+                formatted_date,
+                r.get("id_number", ""),
+                r.get("name", ""),
+                r.get("status", "Completed"),
+                r.get("total_amt", 0.0),
+                r.get("fee_amt", 0.0),
+                r.get("mobile", ""),
+                r.get("remark", "")
             ]
         elif service_type == "aadhar_online":
             row_data = [
-                idx, dt_disp, r.get("name", ""), r.get("id_number", ""),
-                r.get("mobile", ""), r.get("status", ""), r.get("remark", "")
+                idx,
+                formatted_date,
+                r.get("name", ""),
+                r.get("id_number", ""),
+                r.get("mobile", ""),
+                r.get("status", "Completed"),
+                r.get("remark", "")
             ]
         elif service_type == "pancard":
             row_data = [
-                idx, dt_disp, r.get("name", ""), r.get("pan_type", ""),
-                r.get("mobile", ""), r.get("status", ""), r.get("remark", "")
+                idx,
+                formatted_date,
+                r.get("name", ""),
+                r.get("pan_type", ""),
+                r.get("mobile", ""),
+                r.get("status", "Completed"),
+                r.get("remark", "")
             ]
         elif service_type == "aayushman":
             row_data = [
-                idx, dt_disp, r.get("id_number", ""), r.get("name", ""),
-                r.get("mobile", ""), r.get("status", ""), r.get("remark", "")
+                idx,
+                formatted_date,
+                r.get("id_number", ""),
+                r.get("name", ""),
+                r.get("mobile", ""),
+                r.get("status", "Completed"),
+                r.get("remark", "")
             ]
         else:
             row_data = [
-                idx, r.get("service_type", "").upper(), dt_disp, r.get("name", ""),
-                r.get("id_number", ""), r.get("mobile", ""), r.get("status", "") or r.get("pan_type", ""),
-                r.get("fee_amt", 0.0), r.get("remark", "")
+                idx,
+                r.get("service_type", "").upper(),
+                formatted_date,
+                r.get("name", ""),
+                r.get("id_number", ""),
+                r.get("mobile", ""),
+                r.get("status", "Completed"),
+                r.get("fee_amt", 0.0),
+                r.get("remark", "")
             ]
-
         ws.append(row_data)
-        row_num = idx + 1
-        for col_idx, cell in enumerate(ws[row_num], start=1):
-            cell.font = cell_font
-            cell.border = thin_border
-            if col_idx in [1, 2, 6]:
-                cell.alignment = center_align
-            else:
-                cell.alignment = left_align
+        row_num = ws.max_row
         ws.row_dimensions[row_num].height = 20
+        for col_idx in range(1, len(row_data) + 1):
+            c = ws.cell(row=row_num, column=col_idx)
+            c.font = cell_font
+            c.border = thin_border
+            if col_idx in [1, 2]:
+                c.alignment = center_align
+            else:
+                c.alignment = left_align
 
-    # Auto size columns
+    # Auto-adjust column widths
     for col in ws.columns:
-        max_len = max(len(str(cell.value or "")) for cell in col)
+        max_len = 0
         col_letter = col[0].column_letter
-        ws.column_dimensions[col_letter].width = min(max(max_len + 4, 12), 45)
+        for cell in col:
+            val_str = str(cell.value or "")
+            if len(val_str) > max_len:
+                max_len = len(val_str)
+        ws.column_dimensions[col_letter].width = min(max(max_len + 3, 10), 45)
 
     wb.save(output_path)
     return output_path

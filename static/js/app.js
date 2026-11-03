@@ -1415,16 +1415,33 @@ async function submitFileUpload() {
                             }
                         }
 
-                        // 3. Check if subtotal summary row
+                        // 3. Check if subtotal summary row or ID divider row
                         const nonEmpty = rowStr.filter(s => s !== "" && s.toLowerCase() !== "nan");
-                        const hasSidMatch = rowStr.some(s => /S\d{10,30}/i.test(s));
-                        if (!hasStatus && !hasSidMatch && nonEmpty.every(s => /^[\d\.\,]+$/.test(s))) {
-                            continue;
+                        const hasSidMatch = rowStr.some(s => /S\d{15,30}/i.test(s));
+                        if (!hasSidMatch) {
+                            if (nonEmpty.every(s => /^[\d\.\,]+$/.test(s))) continue;
+                            if (/BRIJAL ID|MANISH ID|TOTAL/i.test(joinedUpper)) continue;
                         }
 
-                        // 4. Record date
+                        // 4. Extract SID / SRN / ID Number & authoritative Date from SID
+                        let idNum = "";
+                        let recSid = "";
+                        for (const s of rowStr) {
+                            const m = s.match(/\b(S\d{20,30})\b/i);
+                            if (m) {
+                                recSid = m[1].toUpperCase();
+                                break;
+                            }
+                        }
+
                         let recDate = currentSheetDate;
-                        if (idxDate !== -1 && idxDate < rowStr.length && rowStr[idxDate]) {
+                        if (recSid) {
+                            idNum = recSid;
+                            const mDate = recSid.match(/S\d{10,14}(202[0-9])(0[1-9]|1[0-2])([0-3][0-9])/);
+                            if (mDate) {
+                                recDate = `${mDate[1]}-${mDate[2]}-${mDate[3]}`;
+                            }
+                        } else if (idxDate !== -1 && idxDate < rowStr.length && rowStr[idxDate]) {
                             const pd = parseDateStr(rowStr[idxDate]);
                             if (pd) {
                                 recDate = pd;
@@ -1432,85 +1449,146 @@ async function submitFileUpload() {
                             }
                         }
 
-                        // 5. Name and ID Number
-                        let name = (idxName !== -1 && idxName < rowStr.length) ? rowStr[idxName] : "";
-                        let idNum = "";
-                        let recSid = "";
-
-                        for (const s of rowStr) {
-                            const m = s.match(/\b(S\d{10,30})\b/i);
-                            if (m) {
-                                recSid = m[1];
-                                break;
-                            }
-                        }
-
-                        if (recSid) {
-                            idNum = recSid;
-                        } else if (idxSid !== -1 && idxSid < rowStr.length && rowStr[idxSid]) {
+                        if (!idNum && idxSid !== -1 && idxSid < rowStr.length && rowStr[idxSid]) {
                             const val = rowStr[idxSid];
                             const m = val.match(/\b(S\d{10,30})\b/i);
                             if (m) {
-                                idNum = m[1];
-                            } else if (!/^[\d\.]+$/.test(val)) {
-                                if (!name) name = val;
+                                idNum = m[1].toUpperCase();
                             }
                         }
-
-                        if (idxSrn !== -1 && idxSrn < rowStr.length && rowStr[idxSrn]) {
+                        if (!idNum && idxSrn !== -1 && idxSrn < rowStr.length && rowStr[idxSrn]) {
                             idNum = rowStr[idxSrn];
                         }
-                        if (idxRation !== -1 && idxRation < rowStr.length && rowStr[idxRation]) {
+                        if (!idNum && idxRation !== -1 && idxRation < rowStr.length && rowStr[idxRation]) {
                             idNum = rowStr[idxRation];
                         }
 
-                        // 6. Name extraction from remarks or other columns
-                        if (!name) {
-                            const mNm = joinedUpper.match(/NAME[\s\-:]+([A-Z\s]+)/);
-                            if (mNm) name = mNm[1].trim();
-                        }
-                        if (!name && rowStr.length > 5 && rowStr[5] && !/^[\d\.]+$/.test(rowStr[5])) {
-                            const c5Upper = rowStr[5].toUpperCase();
-                            if (!/SPEED|ADDRESS|MOBILE|RIPIT|CALL/i.test(c5Upper)) {
-                                name = rowStr[5];
+                        // 5. Name extraction
+                        const NON_NAME_SET = new Set([
+                            "NAME", "ADDRESS", "MOBILE", "MO", "MOB", "PHONE", "SPEED", "NEW", "RIPIT", "REPEAT",
+                            "OK", "NOT RECIV", "NOT RICIV", "NO RECIV", "CALL NOT PICKUP", "CALL NOT RECEIVRD",
+                            "MANISH ID", "BRIJAL ID", "TOTAL", "STATUS", "SLNO", "ENROLMENT_NO_DATE", "SID NUMBER",
+                            "OTHERS", "REMARK", "FEE", "NAME CHANGE", "NAME CHANJ"
+                        ]);
+
+                        let name = "";
+                        if (idxName !== -1 && idxName < rowStr.length && rowStr[idxName]) {
+                            const cand = rowStr[idxName];
+                            if (!cand.startsWith("S1") && !/^[\d\.]+$/.test(cand)) {
+                                name = cand;
                             }
                         }
-                        if (!name && idNum) {
-                            name = "Aadhaar Client";
+
+                        // Case A: Format 1 (Col 1 is SID, Col 2 is Name)
+                        if (!name && rowStr.length > 2 && recSid && (rowStr[1].toUpperCase().startsWith("S1") || rowStr[0].toUpperCase().startsWith("S1"))) {
+                            const sidCol = rowStr[1].toUpperCase().startsWith("S1") ? 1 : 0;
+                            const candCol = sidCol + 1;
+                            if (candCol < rowStr.length) {
+                                const cand = rowStr[candCol];
+                                const candU = cand.toUpperCase();
+                                if (cand && !candU.startsWith("COMPLET") && !candU.startsWith("INPROCESS") && !candU.startsWith("REJECT") && !/^[\d\.]+$/.test(cand)) {
+                                    name = cand;
+                                }
+                            }
                         }
 
-                        // 7. Status
+                        // Case B: Col 1 is Customer Name directly
+                        if (!name && rowStr.length > 1) {
+                            const cand = rowStr[1];
+                            const candU = cand.toUpperCase();
+                            if (cand && !cand.startsWith("S1") && !candU.startsWith("COMPLET") && !candU.startsWith("INPROCESS") && !candU.startsWith("REJECT") && !/^[\d\.]+$/.test(cand)) {
+                                if (!NON_NAME_SET.has(candU) && !candU.includes("ID") && !candU.includes("TOTAL")) {
+                                    name = cand;
+                                }
+                            }
+                        }
+
+                        // Case C: Label 'NAME' in later column
+                        if (!name) {
+                            for (let i = 0; i < rowStr.length; i++) {
+                                if (["NAME", "NAME:"].includes(rowStr[i].toUpperCase()) && i + 1 < rowStr.length) {
+                                    const nextC = rowStr[i + 1];
+                                    if (nextC && !NON_NAME_SET.has(nextC.toUpperCase()) && !/^[\d\.]+$/.test(nextC)) {
+                                        name = nextC;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+
+                        // Case D: Person name in extra columns
+                        if (!name) {
+                            for (let i = 3; i < rowStr.length; i++) {
+                                const c = rowStr[i];
+                                const cU = c.toUpperCase();
+                                if (!c || /^[\d\.]+$/.test(c) || /\b[6-9]\d{9}\b/.test(c)) continue;
+                                if (c.includes("/")) {
+                                    const part0 = c.split("/")[0].trim();
+                                    if (part0.split(/\s+/).length >= 2 && !NON_NAME_SET.has(part0.toUpperCase())) {
+                                        name = part0;
+                                        break;
+                                    }
+                                } else if (c.includes("-") && cU.includes("NAME")) {
+                                    const cleanNm = c.replace(/\bNAME\b/gi, "").replace("-", "").trim();
+                                    if (cleanNm) {
+                                        name = cleanNm;
+                                        break;
+                                    }
+                                } else if (c.split(/\s+/).length >= 2 && !NON_NAME_SET.has(cU)) {
+                                    name = c;
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (!name && recSid) {
+                            name = "—";
+                        }
+
+                        // 6. Status
                         let status = "Completed";
-                        if (idxStatus !== -1 && idxStatus < rowStr.length && rowStr[idxStatus]) {
+                        if (/REJECT/i.test(joinedUpper)) status = "Reject";
+                        else if (/INPROCESS|IN PROCESS/i.test(joinedUpper)) status = "InProcess";
+                        else if (/PENDING/i.test(joinedUpper)) status = "Pending";
+                        else if (idxStatus !== -1 && idxStatus < rowStr.length && rowStr[idxStatus]) {
                             const stRaw = rowStr[idxStatus].toLowerCase();
                             if (stRaw.includes("process")) status = "InProcess";
                             else if (stRaw.includes("reject")) status = "Reject";
                             else if (stRaw.includes("pending")) status = "Pending";
                             else if (stRaw.includes("complet")) status = "Completed";
-                        } else {
-                            if (/INPROCESS|IN PROCESS/i.test(joinedUpper)) status = "InProcess";
-                            else if (/REJECT/i.test(joinedUpper)) status = "Reject";
-                            else if (/PENDING/i.test(joinedUpper)) status = "Pending";
-                            else if (/COMPLET/i.test(joinedUpper)) status = "Completed";
                         }
 
-                        // 8. Total & Fee
+                        // 7. Total & Fee
                         let totalAmt = 0;
                         let feeAmt = 0;
                         if (idxTotal !== -1 && idxTotal < rowStr.length && rowStr[idxTotal]) {
                             const parsed = parseFloat(rowStr[idxTotal]);
                             if (!isNaN(parsed)) totalAmt = parsed;
-                        }
-                        if (idxFee !== -1 && idxFee < rowStr.length && rowStr[idxFee]) {
-                            const parsed = parseFloat(rowStr[idxFee]);
-                            if (!isNaN(parsed)) feeAmt = parsed;
-                        } else if (idxTotal !== -1 && idxTotal + 1 < rowStr.length && rowStr[idxTotal + 1]) {
-                            const parsed = parseFloat(rowStr[idxTotal + 1]);
-                            if (!isNaN(parsed)) feeAmt = parsed;
+                            if (idxFee !== -1 && idxFee < rowStr.length && rowStr[idxFee]) {
+                                const pf = parseFloat(rowStr[idxFee]);
+                                if (!isNaN(pf)) feeAmt = pf;
+                            } else if (idxTotal + 1 < rowStr.length && rowStr[idxTotal + 1]) {
+                                const pf = parseFloat(rowStr[idxTotal + 1]);
+                                if (!isNaN(pf)) feeAmt = pf;
+                            }
+                        } else {
+                            const nums = [];
+                            rowStr.forEach((c, idx) => {
+                                if (idx === 0 && /^\d+(\.0)?$/.test(c) && parseFloat(c) < 1000) return;
+                                if (/^\d+(\.\d+)?$/.test(c) && !/\b[6-9]\d{9}\b/.test(c)) {
+                                    const val = parseFloat(c);
+                                    if (val <= 1000) nums.push(val);
+                                }
+                            });
+                            if (nums.length >= 2) {
+                                totalAmt = nums[0];
+                                feeAmt = nums[1];
+                            } else if (nums.length === 1) {
+                                totalAmt = nums[0];
+                            }
                         }
 
-                        // 9. Mobile & Remark
-                        let remark = (idxRemark !== -1 && idxRemark < rowStr.length) ? rowStr[idxRemark] : "";
+                        // 8. Mobile & Remarks
                         let rawMob = (idxMobile !== -1 && idxMobile < rowStr.length) ? rowStr[idxMobile] : "";
                         if (!rawMob) {
                             const mPh = joinedUpper.match(/\b[6-9]\d{9}\b/);
@@ -1518,7 +1596,21 @@ async function submitFileUpload() {
                         }
                         rawMob = rawMob.replace(/\.0$/, "").trim();
 
-                        // 10. Service determination
+                        const remarksList = [];
+                        if (idxRemark !== -1 && idxRemark < rowStr.length && rowStr[idxRemark]) {
+                            remarksList.push(rowStr[idxRemark]);
+                        }
+                        rowStr.forEach(c => {
+                            if (!c) return;
+                            if (c === name || c === idNum || c === rawMob || c.replace(/\.0$/, "") === rawMob) return;
+                            if (/COMPLETED|INPROCESS|IN PROCESS|REJECT|REJECTED|PENDING/i.test(c)) return;
+                            if (/^[\d\.]+$/.test(c) && parseFloat(c) < 1000) return;
+                            if (["NO", "SLNO", "SID NUMBER", "TOTAL", "STATUS", "NAME", "MOBILE"].includes(c.toUpperCase())) return;
+                            if (!remarksList.includes(c)) remarksList.push(c);
+                        });
+                        const remark = remarksList.join(" | ");
+
+                        // 9. Service determination
                         let rowSvc = sheetSvc;
                         const cleanId = (idNum || "").trim().toUpperCase();
                         if (!svcType || svcType === "auto") {
@@ -1530,10 +1622,8 @@ async function submitFileUpload() {
                                 rowSvc = "pancard";
                             } else if (idxRation !== -1 && rowStr[idxRation]) {
                                 rowSvc = "aayushman";
-                            } else if (idxSid !== -1 && cleanId.startsWith("S")) {
+                            } else if (cleanId.startsWith("S")) {
                                 rowSvc = "ucaadhar";
-                            } else if (idxSrn !== -1) {
-                                rowSvc = "aadhar_online";
                             }
                         }
 
