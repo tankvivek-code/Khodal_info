@@ -41,6 +41,15 @@
 </head>
 <body class="bg-slate-100 text-slate-800 min-h-screen flex flex-col antialiased">
 
+    <!-- FULLSCREEN DRAG & DROP OVERLAY -->
+    <div id="fullscreen-drop-overlay" class="fixed inset-0 z-50 bg-slate-900/85 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-white text-center hidden pointer-events-none transition-all duration-200">
+        <div class="w-20 h-20 rounded-3xl bg-brand-600/30 border-2 border-dashed border-brand-400 flex items-center justify-center mb-4 animate-bounce">
+            <i data-lucide="upload-cloud" class="w-10 h-10 text-brand-300"></i>
+        </div>
+        <h2 class="text-2xl font-bold tracking-tight mb-2">Drop File to Auto-Import in Real Time</h2>
+        <p class="text-slate-300 text-sm max-w-md">Drop any Excel (.xlsx, .xls) or CSV with UC Aadhaar (SID), Aadhaar Online (SRN), PAN, or Ayushman sheets. All sheets will be processed automatically.</p>
+    </div>
+
     <!-- TOP NAV HEADER -->
     <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -687,6 +696,9 @@
                     <i data-lucide="plus" class="w-4 h-4"></i> Upload New File
                 </button>
                 <div class="flex items-center gap-2">
+                    <button onclick="restoreRealOfficeData()" class="px-3 py-1.5 font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition inline-flex items-center gap-1" title="Reload original 617 real office records">
+                        <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i> Reload Real Office Data
+                    </button>
                     <button onclick="clearAllRecordsData()" class="px-3 py-1.5 font-semibold text-rose-600 bg-rose-50 border border-rose-200 rounded-lg hover:bg-rose-100 transition inline-flex items-center gap-1">
                         <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Clear All Data
                     </button>
@@ -702,8 +714,8 @@
     <div id="toast-container"></div>
 
     <!-- Preloaded Database Records for GitHub Pages & Static Mode -->
-    <script src="data/records.js?v=20261103h"></script>
+    <script src="data/records.js?v=20261103i"></script>
     <!-- Frontend Script -->
-    <script src="static/js/app.js?v=20261103h"></script>
+    <script src="static/js/app.js?v=20261103i"></script>
 </body>
 </html>

@@ -26,6 +26,7 @@ const SERVICE_META = {
 function boot() {
     initApp();
     setupDropzone();
+    setupWindowDragAndDrop();
     setupKeyboardListeners();
 }
 
@@ -44,6 +45,8 @@ window.addEventListener("load", () => {
 // =========================================================================
 // Automatically purge old demo stores
 try {
+    localStorage.removeItem("khodal_records_store_v3");
+    localStorage.removeItem("khodal_files_list_v3");
     localStorage.removeItem("khodal_records_store_v2");
     localStorage.removeItem("khodal_files_list_v2");
     localStorage.removeItem("khodal_records_store_v1");
@@ -52,16 +55,20 @@ try {
 
 let isStaticMode = window.location.hostname.includes("github.io") || window.location.protocol === "file:";
 let staticRecords = [];
-const STORAGE_KEY = "khodal_records_store_v3";
-const FILES_STORAGE_KEY = "khodal_files_list_v3";
+const STORAGE_KEY = "khodal_records_store_v4";
+const FILES_STORAGE_KEY = "khodal_files_list_v4";
 
 function getStaticFiles() {
     const saved = localStorage.getItem(FILES_STORAGE_KEY);
     if (saved) {
         try {
             const parsed = JSON.parse(saved);
-            if (Array.isArray(parsed)) return parsed;
+            if (Array.isArray(parsed) && parsed.length > 0) return parsed;
         } catch (e) {}
+    }
+    if (window.KHODAL_INITIAL_FILES && Array.isArray(window.KHODAL_INITIAL_FILES) && window.KHODAL_INITIAL_FILES.length > 0) {
+        saveStaticFiles(window.KHODAL_INITIAL_FILES);
+        return window.KHODAL_INITIAL_FILES;
     }
     return [];
 }
@@ -86,17 +93,22 @@ async function initDataStore() {
     }
 
     if (isStaticMode) {
-        console.log("⚡ Khodal Office Hub running in Client-Side / Clean Slate Mode");
+        console.log("⚡ Khodal Office Hub running in Client-Side Mode with Real Office Database");
         const cached = localStorage.getItem(STORAGE_KEY);
         if (cached) {
             try {
                 const parsed = JSON.parse(cached);
-                if (Array.isArray(parsed)) {
+                if (Array.isArray(parsed) && parsed.length > 0) {
                     staticRecords = parsed;
                 }
             } catch (e) {}
-        } else {
-            staticRecords = [];
+        }
+        if (staticRecords.length === 0 && window.KHODAL_RECORDS && Array.isArray(window.KHODAL_RECORDS) && window.KHODAL_RECORDS.length > 0) {
+            console.log(`⚡ Preloading ${window.KHODAL_RECORDS.length} real office records into local storage...`);
+            staticRecords = [...window.KHODAL_RECORDS];
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(staticRecords));
+            } catch (e) {}
         }
     }
 }
@@ -1111,6 +1123,67 @@ function setupDropzone() {
     }, false);
 }
 
+function setupWindowDragAndDrop() {
+    const overlay = document.getElementById("fullscreen-drop-overlay");
+    let dragCounter = 0;
+
+    window.addEventListener("dragenter", (e) => {
+        if (e.dataTransfer && e.dataTransfer.types && Array.from(e.dataTransfer.types).includes("Files")) {
+            e.preventDefault();
+            dragCounter++;
+            if (overlay) {
+                overlay.classList.remove("hidden");
+                overlay.classList.remove("pointer-events-none");
+            }
+        }
+    });
+
+    window.addEventListener("dragover", (e) => {
+        if (e.dataTransfer && e.dataTransfer.types && Array.from(e.dataTransfer.types).includes("Files")) {
+            e.preventDefault();
+        }
+    });
+
+    window.addEventListener("dragleave", (e) => {
+        e.preventDefault();
+        dragCounter--;
+        if (dragCounter <= 0) {
+            dragCounter = 0;
+            if (overlay) {
+                overlay.classList.add("hidden");
+                overlay.classList.add("pointer-events-none");
+            }
+        }
+    });
+
+    window.addEventListener("drop", async (e) => {
+        e.preventDefault();
+        dragCounter = 0;
+        if (overlay) {
+            overlay.classList.add("hidden");
+            overlay.classList.add("pointer-events-none");
+        }
+
+        const dt = e.dataTransfer;
+        if (dt && dt.files && dt.files.length > 0) {
+            const file = dt.files[0];
+            const name = (file.name || "").toLowerCase();
+            if (name.endsWith(".xlsx") || name.endsWith(".xls") || name.endsWith(".csv")) {
+                await processAndImportFileDirectly(file);
+            } else {
+                showToast("Please drop an Excel (.xlsx, .xls) or CSV file.", "warning");
+            }
+        }
+    });
+}
+
+async function processAndImportFileDirectly(file) {
+    handleSelectedFile(file);
+    openModal("modal-upload");
+    showToast(`Processing & importing ${file.name}...`, "info");
+    await submitFileUpload();
+}
+
 function handleFileSelect(event) {
     const files = event.target.files;
     if (files.length > 0) handleSelectedFile(files[0]);
@@ -1232,7 +1305,7 @@ async function submitFileUpload() {
                         dataStartRow = 1;
                     }
 
-                    const sheetSvc = (svcType && svcType !== "auto") ? svcType : detectSheetService(sheetName, headers, selectedUploadFile.name);
+                    let sheetSvc = (svcType && svcType !== "auto") ? svcType : detectSheetService(sheetName, headers, selectedUploadFile.name);
                     if (!detectedOverallService) detectedOverallService = sheetSvc;
 
                     const cleanHeaders = headers.map(cleanHdr);
@@ -1315,8 +1388,14 @@ async function submitFileUpload() {
                                 if (!isNaN(parsed)) totalAmt = parsed;
                                 else if (rowStr[idxTotal].toUpperCase() === "NEW") remark = ("NEW " + remark).trim();
                             }
-                            if (idxFee !== -1 && idxFee < rowStr.length) {
+                            if (idxFee !== -1 && idxFee < rowStr.length && rowStr[idxFee]) {
                                 const parsed = parseFloat(rowStr[idxFee]);
+                                if (!isNaN(parsed)) feeAmt = parsed;
+                            } else if (idxTotal !== -1 && idxTotal + 1 < rowStr.length && rowStr[idxTotal + 1]) {
+                                const parsed = parseFloat(rowStr[idxTotal + 1]);
+                                if (!isNaN(parsed)) feeAmt = parsed;
+                            } else if (rowStr.length >= 6 && rowStr[5]) {
+                                const parsed = parseFloat(rowStr[5]);
                                 if (!isNaN(parsed)) feeAmt = parsed;
                             }
                             if (!rawMob && remark) {
@@ -1535,8 +1614,8 @@ async function openFilesModal() {
     const footerDiv = document.createElement("div");
     footerDiv.className = "pt-2 flex justify-end";
     footerDiv.innerHTML = `
-        <button onclick="resetToDemoFiles()" class="text-xs text-slate-500 hover:text-brand-600 inline-flex items-center gap-1 font-medium transition">
-            <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i> Reset to Default Demo Files
+        <button onclick="restoreRealOfficeData()" class="text-xs text-brand-600 hover:text-brand-800 inline-flex items-center gap-1 font-semibold transition">
+            <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i> Reload Real Office Data (617 Records)
         </button>
     `;
     container.appendChild(footerDiv);
@@ -1606,6 +1685,26 @@ async function clearAllRecordsData() {
     await loadDailyProgress();
     await openFilesModal();
     await fetchRecords(1);
+}
+
+async function restoreRealOfficeData() {
+    if (window.KHODAL_RECORDS && Array.isArray(window.KHODAL_RECORDS) && window.KHODAL_RECORDS.length > 0) {
+        staticRecords = [...window.KHODAL_RECORDS];
+        try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(staticRecords));
+        } catch (e) {}
+        if (window.KHODAL_INITIAL_FILES && Array.isArray(window.KHODAL_INITIAL_FILES)) {
+            saveStaticFiles(window.KHODAL_INITIAL_FILES);
+        }
+        showToast(`Reloaded ${staticRecords.length} real office records!`, "success");
+        await loadDailyProgress();
+        if (!document.getElementById("modal-files").classList.contains("hidden")) {
+            await openFilesModal();
+        }
+        await fetchRecords(1);
+    } else {
+        showToast("Real office data script not loaded.", "warning");
+    }
 }
 
 // =========================================================================
