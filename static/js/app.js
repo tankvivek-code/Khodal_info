@@ -54,18 +54,30 @@ async function initDataStore() {
         const cached = localStorage.getItem(STORAGE_KEY);
         if (cached) {
             try {
-                staticRecords = JSON.parse(cached);
+                const parsed = JSON.parse(cached);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    staticRecords = parsed;
+                }
             } catch (e) {}
         }
         if (!staticRecords || staticRecords.length === 0) {
-            try {
-                const res = await fetch("data/records.json");
-                if (res.ok) {
-                    staticRecords = await res.json();
+            if (window.KHODAL_RECORDS && Array.isArray(window.KHODAL_RECORDS) && window.KHODAL_RECORDS.length > 0) {
+                staticRecords = window.KHODAL_RECORDS.slice();
+                try {
                     localStorage.setItem(STORAGE_KEY, JSON.stringify(staticRecords));
+                } catch (e) {}
+            } else {
+                try {
+                    const res = await fetch("data/records.json?v=" + Date.now());
+                    if (res.ok) {
+                        staticRecords = await res.json();
+                        try {
+                            localStorage.setItem(STORAGE_KEY, JSON.stringify(staticRecords));
+                        } catch (e) {}
+                    }
+                } catch (err) {
+                    console.warn("Could not load data/records.json", err);
                 }
-            } catch (err) {
-                console.warn("Could not load data/records.json", err);
             }
         }
     }
@@ -312,8 +324,8 @@ async function fetchRecords(page = 1) {
     queryStr.append("page", params.page);
     queryStr.append("page_size", params.page_size);
 
-    const spinner = document.getElementById("table-loading-spinner");
-    spinner.classList.remove("hidden");
+    // spinner already declared above
+    if (spinner) spinner.classList.remove("hidden");
 
     try {
         const res = await fetch(`/api/records?${queryStr.toString()}`);
@@ -497,7 +509,7 @@ function renderRecordsTable(records, serviceType) {
                 <td class="py-3 px-3 text-center text-xs font-mono text-slate-400 font-medium">${globalIdx}</td>
                 <td class="py-3 px-3 text-xs font-mono font-medium text-slate-700 whitespace-nowrap">${escapeHtml(r.record_date)}</td>
                 <td class="py-3 px-3 text-sm font-semibold text-slate-900 truncate max-w-[200px] cursor-pointer hover:text-brand-600" onclick="viewRecordDetails(${r.id})">${hlName}</td>
-                <td class="py-3 px-3 text-xs font-bold ${r.pan_type.includes('NEW') ? 'text-blue-700' : 'text-amber-700'}">${escapeHtml(r.pan_type || '-')}</td>
+                <td class="py-3 px-3 text-xs font-bold ${(r.pan_type || '').includes('NEW') ? 'text-blue-700' : 'text-amber-700'}">${escapeHtml(r.pan_type || '-')}</td>
                 <td class="py-3 px-3">
                     <div class="flex items-center gap-1.5 font-mono text-xs font-semibold text-slate-800">
                         <span>${hlMobile}</span>
