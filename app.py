@@ -21,6 +21,7 @@ from database import (
     get_all_files,
     get_file_by_id,
     delete_uploaded_file,
+    clear_all_database_records,
     update_file_row_count,
     insert_bulk_records,
     insert_single_record,
@@ -266,6 +267,12 @@ async def remove_file(file_id: int):
     if not deleted:
         raise HTTPException(status_code=404, detail="File could not be deleted")
     return {"status": "success", "message": "File and associated records deleted"}
+
+
+@app.delete("/api/files")
+async def clear_all_files_endpoint():
+    clear_all_database_records()
+    return {"status": "success", "message": "All files and records cleared successfully"}
 
 
 @app.get("/api/export")

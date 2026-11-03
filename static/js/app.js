@@ -42,27 +42,28 @@ window.addEventListener("load", () => {
 // =========================================================================
 // HYBRID DATA STORE (Seamless GitHub Pages & Static Mode Support)
 // =========================================================================
+// Automatically purge old demo stores
+try {
+    localStorage.removeItem("khodal_records_store_v2");
+    localStorage.removeItem("khodal_files_list_v2");
+    localStorage.removeItem("khodal_records_store_v1");
+    localStorage.removeItem("khodal_records_store");
+} catch (e) {}
+
 let isStaticMode = window.location.hostname.includes("github.io") || window.location.protocol === "file:";
 let staticRecords = [];
-const STORAGE_KEY = "khodal_records_store_v2";
-const FILES_STORAGE_KEY = "khodal_files_list_v2";
-
-const DEFAULT_FILES = [
-    { id: 5, filename: "DEMO1_ucaadhar.xlsx", service_type: "ucaadhar", row_count: 380, file_size: 39447, uploaded_at: "2026-11-03 10:56:55" },
-    { id: 6, filename: "DEMO2_aadhar_online.xlsx", service_type: "aadhar_online", row_count: 147, file_size: 20935, uploaded_at: "2026-11-03 11:00:41" },
-    { id: 7, filename: "DEMO3_pancard.xlsx", service_type: "pancard", row_count: 41, file_size: 7034, uploaded_at: "2026-11-03 11:00:41" },
-    { id: 8, filename: "DEMO4_aayushman.xlsx", service_type: "aayushman", row_count: 49, file_size: 13245, uploaded_at: "2026-11-03 11:00:41" }
-];
+const STORAGE_KEY = "khodal_records_store_v3";
+const FILES_STORAGE_KEY = "khodal_files_list_v3";
 
 function getStaticFiles() {
     const saved = localStorage.getItem(FILES_STORAGE_KEY);
     if (saved) {
         try {
             const parsed = JSON.parse(saved);
-            if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+            if (Array.isArray(parsed)) return parsed;
         } catch (e) {}
     }
-    return DEFAULT_FILES.slice();
+    return [];
 }
 
 function saveStaticFiles(filesList) {
@@ -85,35 +86,17 @@ async function initDataStore() {
     }
 
     if (isStaticMode) {
-        console.log("⚡ Khodal Office Hub running in Client-Side / GitHub Pages Mode");
+        console.log("⚡ Khodal Office Hub running in Client-Side / Clean Slate Mode");
         const cached = localStorage.getItem(STORAGE_KEY);
         if (cached) {
             try {
                 const parsed = JSON.parse(cached);
-                if (Array.isArray(parsed) && parsed.length > 0) {
+                if (Array.isArray(parsed)) {
                     staticRecords = parsed;
                 }
             } catch (e) {}
-        }
-        if (!staticRecords || staticRecords.length === 0) {
-            if (window.KHODAL_RECORDS && Array.isArray(window.KHODAL_RECORDS) && window.KHODAL_RECORDS.length > 0) {
-                staticRecords = window.KHODAL_RECORDS.slice();
-                try {
-                    localStorage.setItem(STORAGE_KEY, JSON.stringify(staticRecords));
-                } catch (e) {}
-            } else {
-                try {
-                    const res = await fetch("data/records.json?v=" + Date.now());
-                    if (res.ok) {
-                        staticRecords = await res.json();
-                        try {
-                            localStorage.setItem(STORAGE_KEY, JSON.stringify(staticRecords));
-                        } catch (e) {}
-                    }
-                } catch (err) {
-                    console.warn("Could not load data/records.json", err);
-                }
-            }
+        } else {
+            staticRecords = [];
         }
     }
 }
@@ -487,6 +470,25 @@ function renderRecordsTable(records, serviceType) {
 
     if (!records || records.length === 0) {
         emptyState.classList.remove("hidden");
+        const emptyTitle = document.getElementById("empty-state-title");
+        const emptyDesc = document.getElementById("empty-state-desc");
+        const emptyBtn = document.getElementById("empty-state-btn");
+        if (totalRecords === 0) {
+            if (emptyTitle) emptyTitle.textContent = "No Office Records Loaded Yet";
+            if (emptyDesc) emptyDesc.textContent = "Upload your Excel (.xlsx, .xls) or CSV file to start viewing and searching records.";
+            if (emptyBtn) {
+                emptyBtn.innerHTML = '<i data-lucide="upload-cloud" class="w-4 h-4 inline mr-1"></i> Upload Office File';
+                emptyBtn.onclick = openUploadModal;
+            }
+        } else {
+            if (emptyTitle) emptyTitle.textContent = "No Records Found";
+            if (emptyDesc) emptyDesc.textContent = "Try clearing search terms or selecting 'All Dates'.";
+            if (emptyBtn) {
+                emptyBtn.innerHTML = 'Reset Filters';
+                emptyBtn.onclick = resetAllFilters;
+            }
+        }
+        refreshIcons();
         return;
     }
     emptyState.classList.add("hidden");
@@ -1417,9 +1419,9 @@ async function openFilesModal() {
     if (!files || files.length === 0) {
         container.innerHTML = `
             <div class="text-center py-8">
-                <p class="text-xs text-slate-500 mb-3">No office files currently loaded.</p>
-                <button onclick="resetToDemoFiles()" class="px-3.5 py-1.5 bg-brand-50 hover:bg-brand-100 text-brand-700 border border-brand-200 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 transition">
-                    <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i> Restore Demo Files
+                <p class="text-xs text-slate-500 mb-3">No office files currently loaded. Upload an Excel or CSV file to start.</p>
+                <button onclick="openUploadModal(); closeModal('modal-files');" class="px-3.5 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 transition shadow-xs">
+                    <i data-lucide="upload-cloud" class="w-3.5 h-3.5"></i> Upload Office File
                 </button>
             </div>
         `;
@@ -1521,14 +1523,17 @@ async function confirmDeleteFile(fileId, filename) {
     }
 }
 
-async function resetToDemoFiles() {
-    if (!confirm("Restore the 4 original demo files and 617 preloaded records?")) return;
+async function clearAllRecordsData() {
+    if (!confirm("Are you sure you want to remove all files and records?")) return;
     localStorage.removeItem(FILES_STORAGE_KEY);
     localStorage.removeItem(STORAGE_KEY);
-    if (window.KHODAL_RECORDS && Array.isArray(window.KHODAL_RECORDS)) {
-        staticRecords = window.KHODAL_RECORDS.slice();
+    staticRecords = [];
+    if (!isStaticMode) {
+        try {
+            await fetch("/api/files", { method: "DELETE" });
+        } catch (e) {}
     }
-    showToast("Restored original demo data!", "success");
+    showToast("All data cleared successfully!", "info");
     await loadDailyProgress();
     await openFilesModal();
     await fetchRecords(1);

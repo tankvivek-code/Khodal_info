@@ -126,6 +126,24 @@ def delete_uploaded_file(file_id: int) -> bool:
         return True
 
 
+def clear_all_database_records() -> bool:
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT stored_path FROM uploaded_files")
+        for row in cursor.fetchall():
+            if row["stored_path"] and os.path.exists(row["stored_path"]):
+                try:
+                    os.remove(row["stored_path"])
+                except OSError:
+                    pass
+        cursor.execute("DELETE FROM office_records;")
+        cursor.execute("DELETE FROM uploaded_files;")
+        conn.commit()
+        cursor.execute("VACUUM;")
+        conn.commit()
+        return True
+
+
 def insert_bulk_records(records: List[Dict[str, Any]]) -> int:
     if not records:
         return 0
