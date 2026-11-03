@@ -45,6 +45,31 @@ window.addEventListener("load", () => {
 let isStaticMode = window.location.hostname.includes("github.io") || window.location.protocol === "file:";
 let staticRecords = [];
 const STORAGE_KEY = "khodal_records_store_v2";
+const FILES_STORAGE_KEY = "khodal_files_list_v2";
+
+const DEFAULT_FILES = [
+    { id: 5, filename: "DEMO1_ucaadhar.xlsx", service_type: "ucaadhar", row_count: 380, file_size: 39447, uploaded_at: "2026-11-03 10:56:55" },
+    { id: 6, filename: "DEMO2_aadhar_online.xlsx", service_type: "aadhar_online", row_count: 147, file_size: 20935, uploaded_at: "2026-11-03 11:00:41" },
+    { id: 7, filename: "DEMO3_pancard.xlsx", service_type: "pancard", row_count: 41, file_size: 7034, uploaded_at: "2026-11-03 11:00:41" },
+    { id: 8, filename: "DEMO4_aayushman.xlsx", service_type: "aayushman", row_count: 49, file_size: 13245, uploaded_at: "2026-11-03 11:00:41" }
+];
+
+function getStaticFiles() {
+    const saved = localStorage.getItem(FILES_STORAGE_KEY);
+    if (saved) {
+        try {
+            const parsed = JSON.parse(saved);
+            if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        } catch (e) {}
+    }
+    return DEFAULT_FILES.slice();
+}
+
+function saveStaticFiles(filesList) {
+    try {
+        localStorage.setItem(FILES_STORAGE_KEY, JSON.stringify(filesList));
+    } catch (e) {}
+}
 
 async function initDataStore() {
     if (!isStaticMode) {
@@ -1081,6 +1106,7 @@ async function submitFileUpload() {
                 const jsonRows = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
                 let imported = 0;
                 let lastDate = new Date().toISOString().split("T")[0];
+                const newFileId = Date.now();
 
                 jsonRows.forEach(row => {
                     if (!row || row.length === 0) return;
@@ -1099,6 +1125,7 @@ async function submitFileUpload() {
                         const remark = String(row[5] || row[6] || "").trim();
                         staticRecords.unshift({
                             id: nextId,
+                            file_id: newFileId,
                             service_type: svcType !== "auto" ? svcType : "ucaadhar",
                             record_date: lastDate,
                             name: name,
@@ -1115,6 +1142,17 @@ async function submitFileUpload() {
                         imported++;
                     }
                 });
+
+                let files = getStaticFiles();
+                files.unshift({
+                    id: newFileId,
+                    filename: selectedUploadFile.name,
+                    service_type: svcType !== "auto" ? svcType : "ucaadhar",
+                    row_count: imported,
+                    file_size: selectedUploadFile.size,
+                    uploaded_at: new Date().toISOString().replace("T", " ").substring(0, 19)
+                });
+                saveStaticFiles(files);
 
                 localStorage.setItem(STORAGE_KEY, JSON.stringify(staticRecords));
                 showToast(`Successfully imported ${imported} records!`, "success");
@@ -1167,92 +1205,140 @@ async function openFilesModal() {
     const container = document.getElementById("files-list-container");
     container.innerHTML = '<div class="text-center py-6 text-slate-400 text-xs">Loading files...</div>';
 
+    let files = [];
     if (isStaticMode) {
+        files = getStaticFiles();
+    } else {
+        try {
+            const res = await fetch("/api/files");
+            if (res.ok) {
+                files = await res.json();
+            } else {
+                files = getStaticFiles();
+            }
+        } catch (err) {
+            files = getStaticFiles();
+        }
+    }
+
+    if (!files || files.length === 0) {
         container.innerHTML = `
-            <div class="space-y-2">
-                <div class="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800 flex items-center justify-between">
-                    <span>📁 <strong>Demo 1: UC Aadhaar</strong> (380 preloaded records)</span>
-                    <span class="text-xs px-2 py-0.5 rounded bg-emerald-200 font-bold">Active</span>
-                </div>
-                <div class="p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-800 flex items-center justify-between">
-                    <span>📁 <strong>Demo 2: Aadhaar Online</strong> (147 preloaded records)</span>
-                    <span class="text-xs px-2 py-0.5 rounded bg-blue-200 font-bold">Active</span>
-                </div>
-                <div class="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 flex items-center justify-between">
-                    <span>📁 <strong>Demo 3: PAN Card</strong> (41 preloaded records)</span>
-                    <span class="text-xs px-2 py-0.5 rounded bg-amber-200 font-bold">Active</span>
-                </div>
-                <div class="p-3 bg-purple-50 border border-purple-200 rounded-xl text-xs text-purple-800 flex items-center justify-between">
-                    <span>📁 <strong>Demo 4: Ayushman Card</strong> (49 preloaded records)</span>
-                    <span class="text-xs px-2 py-0.5 rounded bg-purple-200 font-bold">Active</span>
-                </div>
+            <div class="text-center py-8">
+                <p class="text-xs text-slate-500 mb-3">No office files currently loaded.</p>
+                <button onclick="resetToDemoFiles()" class="px-3.5 py-1.5 bg-brand-50 hover:bg-brand-100 text-brand-700 border border-brand-200 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 transition">
+                    <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i> Restore Demo Files
+                </button>
             </div>
         `;
+        refreshIcons();
+        return;
+    }
+
+    container.innerHTML = "";
+    files.forEach(f => {
+        const card = document.createElement("div");
+        card.className = "flex items-center justify-between p-3.5 bg-slate-50 rounded-xl border border-slate-200 hover:border-brand-300 transition group";
+
+        const sizeKb = f.file_size ? (f.file_size / 1024).toFixed(1) : "15.0";
+        const rowCount = f.row_count || 0;
+
+        card.innerHTML = `
+            <div class="flex items-center gap-3 min-w-0 pr-2">
+                <div class="w-9 h-9 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                    <i data-lucide="file-spreadsheet" class="w-5 h-5"></i>
+                </div>
+                <div class="min-w-0">
+                    <h4 class="text-xs font-bold text-slate-900 truncate" title="${escapeHtml(f.filename)}">${escapeHtml(f.filename)}</h4>
+                    <div class="flex items-center gap-2 text-[11px] text-slate-500 mt-0.5 flex-wrap">
+                        <span class="font-bold text-brand-700 uppercase">${escapeHtml(f.service_type || 'General')}</span>
+                        <span>•</span>
+                        <span class="font-semibold text-slate-700">${rowCount.toLocaleString()} rows</span>
+                        <span>•</span>
+                        <span>${sizeKb} KB</span>
+                    </div>
+                </div>
+            </div>
+            <div class="flex items-center gap-2 shrink-0">
+                <button onclick="confirmDeleteFile(${f.id}, '${escapeHtml(f.filename)}')" class="p-2 bg-rose-50 hover:bg-rose-100 text-rose-600 hover:text-rose-700 border border-rose-200 rounded-lg text-xs font-semibold transition inline-flex items-center gap-1" title="Delete file and remove its imported records">
+                    <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                    <span class="hidden sm:inline">Delete File</span>
+                </button>
+            </div>
+        `;
+        container.appendChild(card);
+    });
+
+    const footerDiv = document.createElement("div");
+    footerDiv.className = "pt-2 flex justify-end";
+    footerDiv.innerHTML = `
+        <button onclick="resetToDemoFiles()" class="text-xs text-slate-500 hover:text-brand-600 inline-flex items-center gap-1 font-medium transition">
+            <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i> Reset to Default Demo Files
+        </button>
+    `;
+    container.appendChild(footerDiv);
+
+    refreshIcons();
+}
+
+async function confirmDeleteFile(fileId, filename) {
+    if (!confirm(`Are you sure you want to delete '${filename}' and remove all its imported records?`)) return;
+
+    if (isStaticMode) {
+        let files = getStaticFiles();
+        files = files.filter(f => f.id !== fileId);
+        saveStaticFiles(files);
+
+        // Remove all records associated with this fileId
+        staticRecords = staticRecords.filter(r => r.file_id !== fileId);
+        try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(staticRecords));
+        } catch (e) {}
+
+        showToast(`Deleted '${filename}' and its imported records`, "info");
+        await loadDailyProgress();
+        await openFilesModal();
+        await fetchRecords(1);
         return;
     }
 
     try {
-        const res = await fetch("/api/files");
-        const files = await res.json();
-
-        if (!files || files.length === 0) {
-            container.innerHTML = `<div class="text-center py-8 text-xs text-slate-500">No Excel or CSV files uploaded yet.</div>`;
-            return;
-        }
-
-        container.innerHTML = "";
-        files.forEach(f => {
-            const card = document.createElement("div");
-            card.className = "flex items-center justify-between p-3.5 bg-slate-50 rounded-xl border border-slate-200 hover:border-brand-300 transition";
-
-            card.innerHTML = `
-                <div class="flex items-center gap-3">
-                    <div class="w-9 h-9 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
-                        <i data-lucide="file-spreadsheet" class="w-5 h-5"></i>
-                    </div>
-                    <div>
-                        <h4 class="text-xs font-bold text-slate-900 truncate max-w-xs">${escapeHtml(f.filename)}</h4>
-                        <div class="flex items-center gap-2 text-[11px] text-slate-500 mt-0.5">
-                            <span class="font-bold text-brand-700 uppercase">${escapeHtml(f.service_type || 'General')}</span>
-                            <span>•</span>
-                            <span class="font-semibold text-slate-700">${f.row_count.toLocaleString()} rows</span>
-                            <span>•</span>
-                            <span>${(f.file_size / 1024).toFixed(1)} KB</span>
-                        </div>
-                    </div>
-                </div>
-                <div class="flex items-center gap-2">
-                    <a href="/api/files/${f.id}/download" download class="p-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-xs font-semibold inline-flex items-center gap-1 transition">
-                        <i data-lucide="download" class="w-3.5 h-3.5"></i>
-                        <span class="hidden sm:inline">Download</span>
-                    </a>
-                    <button onclick="confirmDeleteFile(${f.id}, '${escapeHtml(f.filename)}')" class="p-2 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 rounded-lg text-xs font-semibold transition">
-                        <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
-                    </button>
-                </div>
-            `;
-            container.appendChild(card);
-        });
-        refreshIcons();
-    } catch (err) {
-        container.innerHTML = '<div class="text-rose-500 text-xs py-4">Failed to load files</div>';
-    }
-}
-
-async function confirmDeleteFile(fileId, filename) {
-    if (!confirm(`Delete '${filename}' and all its imported records?`)) return;
-
-    try {
         const res = await fetch(`/api/files/${fileId}`, { method: "DELETE" });
-        if (!res.ok) throw new Error("Failed to delete file");
+        if (!res.ok) {
+            let files = getStaticFiles();
+            files = files.filter(f => f.id !== fileId);
+            saveStaticFiles(files);
+            staticRecords = staticRecords.filter(r => r.file_id !== fileId);
+            try { localStorage.setItem(STORAGE_KEY, JSON.stringify(staticRecords)); } catch (e) {}
+        }
 
         showToast(`Deleted ${filename}`, "info");
         await loadDailyProgress();
         await openFilesModal();
         await fetchRecords(1);
     } catch (err) {
-        showToast(err.message, "error");
+        let files = getStaticFiles();
+        files = files.filter(f => f.id !== fileId);
+        saveStaticFiles(files);
+        staticRecords = staticRecords.filter(r => r.file_id !== fileId);
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(staticRecords)); } catch (e) {}
+        showToast(`Deleted ${filename}`, "info");
+        await loadDailyProgress();
+        await openFilesModal();
+        await fetchRecords(1);
     }
+}
+
+async function resetToDemoFiles() {
+    if (!confirm("Restore the 4 original demo files and 617 preloaded records?")) return;
+    localStorage.removeItem(FILES_STORAGE_KEY);
+    localStorage.removeItem(STORAGE_KEY);
+    if (window.KHODAL_RECORDS && Array.isArray(window.KHODAL_RECORDS)) {
+        staticRecords = window.KHODAL_RECORDS.slice();
+    }
+    showToast("Restored original demo data!", "success");
+    await loadDailyProgress();
+    await openFilesModal();
+    await fetchRecords(1);
 }
 
 // =========================================================================
