@@ -215,13 +215,19 @@ async def upload_daily_file(
         row_count = insert_bulk_records(records)
         update_file_row_count(file_id, row_count)
         
+        sheets_count = summary.get("sheets_count", 1)
+        sheet_names = summary.get("sheet_names", [])
+        sheet_info = f" across {sheets_count} sheets ({', '.join(sheet_names[:3])}{'...' if len(sheet_names) > 3 else ''})" if sheets_count > 1 else ""
+
         return {
             "status": "success",
             "file_id": file_id,
             "filename": filename,
             "service_type": actual_svc,
             "imported_rows": row_count,
-            "message": f"Successfully uploaded and imported {row_count} records for {actual_svc.upper()}!"
+            "sheets_count": sheets_count,
+            "sheet_names": sheet_names,
+            "message": f"Successfully uploaded and imported {row_count} records{sheet_info} for {actual_svc.upper()}!"
         }
     except Exception as e:
         if os.path.exists(saved_path):

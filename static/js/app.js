@@ -1102,44 +1102,236 @@ async function submitFileUpload() {
             try {
                 const data = new Uint8Array(e.target.result);
                 const workbook = XLSX.read(data, { type: "array" });
-                const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-                const jsonRows = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
-                let imported = 0;
-                let lastDate = new Date().toISOString().split("T")[0];
+                const sheetNames = workbook.SheetNames || [];
+                
+                let totalImported = 0;
+                let sheetsProcessed = 0;
                 const newFileId = Date.now();
+                let detectedOverallService = svcType !== "auto" ? svcType : null;
 
-                jsonRows.forEach(row => {
-                    if (!row || row.length === 0) return;
-                    row.forEach(cell => {
-                        const c = String(cell).trim();
-                        if (/^\d{4}-\d{2}-\d{2}$/.test(c) || /^\d{2}\/\d{2}\/\d{4}$/.test(c)) {
-                            lastDate = c;
+                const cleanHdr = (str) => {
+                    if (!str) return "";
+                    return String(str).toLowerCase().trim().replace(/[_\-\.\(\)\[\]\/\\:]+/g, " ").replace(/\s+/g, " ");
+                };
+
+                const parseDateStr = (val) => {
+                    if (!val) return "";
+                    const s = String(val).trim();
+                    const mIso = s.match(/(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+                    if (mIso) {
+                        return `${mIso[1]}-${String(mIso[2]).padStart(2, '0')}-${String(mIso[3]).padStart(2, '0')}`;
+                    }
+                    const mDm = s.match(/(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})/);
+                    if (mDm) {
+                        let yr = mDm[3];
+                        if (yr.length === 2) yr = "20" + yr;
+                        else if (yr.length === 3) yr = "2026";
+                        return `${yr}-${String(mDm[2]).padStart(2, '0')}-${String(mDm[1]).padStart(2, '0')}`;
+                    }
+                    return "";
+                };
+
+                const detectSheetService = (sName, hdrs, fName) => {
+                    const cleanS = cleanHdr(sName);
+                    if (cleanS.includes("srn") || cleanS.includes("online")) return "aadhar_online";
+                    if (cleanS.includes("pan")) return "pancard";
+                    if (cleanS.includes("ration") || cleanS.includes("ayushman") || cleanS.includes("aayushman")) return "aayushman";
+                    if (cleanS.includes("sid") || cleanS.includes("uc")) return "ucaadhar";
+
+                    const joinedH = hdrs.map(cleanHdr).join(" ");
+                    if (joinedH.includes("sid")) return "ucaadhar";
+                    if (joinedH.includes("srn")) return "aadhar_online";
+                    if (joinedH.includes("pan change") || joinedH.includes("pan new") || joinedH.includes("pancard") || joinedH.includes("pan")) return "pancard";
+                    if (joinedH.includes("ration") || joinedH.includes("ayushman") || joinedH.includes("aayushman")) return "aayushman";
+
+                    const lowF = (fName || "").toLowerCase();
+                    if (lowF.includes("ucaadhar") || lowF.includes("uc_aadhar") || lowF.includes("sid")) return "ucaadhar";
+                    if (lowF.includes("aadhar_online") || lowF.includes("online_aadhar") || lowF.includes("srn")) return "aadhar_online";
+                    if (lowF.includes("pan")) return "pancard";
+                    if (lowF.includes("ayushman") || lowF.includes("aayushman") || lowF.includes("ration")) return "aayushman";
+
+                    return "ucaadhar";
+                };
+
+                // Iterate over EVERY sheet in the uploaded Excel workbook
+                sheetNames.forEach(sheetName => {
+                    const sheet = workbook.Sheets[sheetName];
+                    if (!sheet) return;
+                    const rawRows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+                    if (!rawRows || rawRows.length === 0) return;
+
+                    const sheetDateCandidate = parseDateStr(sheetName);
+                    let currentSheetDate = sheetDateCandidate || new Date().toISOString().split("T")[0];
+
+                    // Find header row (usually row 0, 1, or 2)
+                    let headerRowIdx = -1;
+                    for (let rIdx = 0; rIdx < Math.min(5, rawRows.length); rIdx++) {
+                        const rowTexts = (rawRows[rIdx] || []).map(cleanHdr);
+                        if (rowTexts.some(t => t.includes("name") || t.includes("party") || t.includes("sid") || t.includes("srn") || t.includes("ration") || t.includes("client"))) {
+                            headerRowIdx = rIdx;
+                            break;
                         }
-                    });
+                    }
 
-                    const name = String(row[1] || row[0] || "").trim();
-                    if (name && !name.toLowerCase().includes("name") && !name.toLowerCase().includes("total") && !name.toLowerCase().includes("sr no")) {
-                        const nextId = staticRecords.reduce((max, r) => Math.max(max, r.id || 0), 0) + 1;
-                        const mob = String(row[3] || row[4] || "").replace(/\.0$/, "").trim();
-                        const idNum = String(row[2] || "").trim();
-                        const remark = String(row[5] || row[6] || "").trim();
-                        staticRecords.unshift({
-                            id: nextId,
-                            file_id: newFileId,
-                            service_type: svcType !== "auto" ? svcType : "ucaadhar",
-                            record_date: lastDate,
-                            name: name,
-                            mobile: mob,
-                            normalized_mobile: mob.replace(/\D/g, "").slice(-10),
-                            id_number: idNum,
-                            pan_type: "",
-                            status: "InProcess",
-                            fee_amt: parseFloat(row[4]) || 0.0,
-                            total_amt: parseFloat(row[4]) || 0.0,
-                            remark: remark,
-                            is_baki: remark.toUpperCase().includes("BAKI") ? 1 : 0
-                        });
-                        imported++;
+                    let headers = [];
+                    let dataStartRow = 0;
+                    if (headerRowIdx !== -1) {
+                        headers = (rawRows[headerRowIdx] || []).map(c => String(c).trim());
+                        dataStartRow = headerRowIdx + 1;
+                    } else {
+                        headers = (rawRows[0] || []).map(c => String(c).trim());
+                        dataStartRow = 1;
+                    }
+
+                    const sheetSvc = (svcType && svcType !== "auto") ? svcType : detectSheetService(sheetName, headers, selectedUploadFile.name);
+                    if (!detectedOverallService) detectedOverallService = sheetSvc;
+
+                    const cleanHeaders = headers.map(cleanHdr);
+                    const findCol = (...synonyms) => {
+                        for (const syn of synonyms) {
+                            const idx = cleanHeaders.findIndex(h => h.includes(syn) || syn.includes(h));
+                            if (idx !== -1) return idx;
+                        }
+                        return -1;
+                    };
+
+                    const idxDate = findCol("date");
+                    const idxName = findCol("name", "client name", "party");
+                    const idxSid = findCol("sid number", "sid");
+                    const idxSrn = findCol("srn no", "srn number", "srn");
+                    const idxRation = findCol("ration card no", "ration", "aayushman", "ayushman");
+                    const idxPan = findCol("pan change", "pan new", "pan");
+                    const idxMobile = findCol("mo", "mobile", "mobile number", "contact");
+                    const idxStatus = findCol("status");
+                    const idxTotal = findCol("total", "total amt", "amount");
+                    const idxFee = findCol("fee");
+                    const idxRemark = findCol("remark", "remarks", "others", "note");
+
+                    let sheetRowCount = 0;
+
+                    for (let r = dataStartRow; r < rawRows.length; r++) {
+                        const row = rawRows[r];
+                        if (!row || row.length === 0) continue;
+                        const rowStr = row.map(c => (c !== null && c !== undefined) ? String(c).trim() : "");
+                        if (rowStr.every(c => c === "")) continue;
+
+                        // Check for date row dividers (e.g. single cell date)
+                        const dateCandidates = rowStr.map(parseDateStr).filter(d => d);
+                        const nonEmptyCount = rowStr.filter(c => c !== "").length;
+                        if (nonEmptyCount === 1 && dateCandidates.length === 1) {
+                            currentSheetDate = dateCandidates[0];
+                            continue;
+                        } else if (dateCandidates.length > 0 && (idxDate === -1 || (idxName !== -1 && !rowStr[idxName]))) {
+                            currentSheetDate = dateCandidates[0];
+                            continue;
+                        }
+
+                        let recDate = "";
+                        if (idxDate !== -1 && idxDate < rowStr.length && rowStr[idxDate]) {
+                            const pd = parseDateStr(rowStr[idxDate]);
+                            if (pd) {
+                                recDate = pd;
+                                currentSheetDate = pd;
+                            }
+                        }
+                        if (!recDate) recDate = currentSheetDate;
+
+                        const name = (idxName !== -1 && idxName < rowStr.length) ? rowStr[idxName] : (rowStr[1] || rowStr[0] || "");
+                        if (name && (name.toLowerCase().includes("name") || name.toLowerCase().includes("total") || name.toLowerCase().includes("sr no"))) {
+                            continue;
+                        }
+
+                        let rawMob = (idxMobile !== -1 && idxMobile < rowStr.length) ? rowStr[idxMobile] : (rowStr[3] || rowStr[4] || "");
+                        rawMob = rawMob.replace(/\.0$/, "").trim();
+
+                        let remark = (idxRemark !== -1 && idxRemark < rowStr.length) ? rowStr[idxRemark] : (rowStr[5] || rowStr[6] || "");
+                        let status = (idxStatus !== -1 && idxStatus < rowStr.length) ? rowStr[idxStatus] : "";
+                        let totalAmt = 0;
+                        let feeAmt = 0;
+                        let idNum = "";
+                        let panType = "";
+
+                        if (sheetSvc === "ucaadhar") {
+                            if (idxSid !== -1 && idxSid < rowStr.length) idNum = rowStr[idxSid];
+                            else if (rowStr[2]) idNum = rowStr[2];
+
+                            if (idxTotal !== -1 && idxTotal < rowStr.length) {
+                                const parsed = parseFloat(rowStr[idxTotal]);
+                                if (!isNaN(parsed)) totalAmt = parsed;
+                                else if (rowStr[idxTotal].toUpperCase() === "NEW") remark = ("NEW " + remark).trim();
+                            }
+                            if (idxFee !== -1 && idxFee < rowStr.length) {
+                                const parsed = parseFloat(rowStr[idxFee]);
+                                if (!isNaN(parsed)) feeAmt = parsed;
+                            }
+                            if (!rawMob && remark) {
+                                const mMatch = remark.match(/\b[6-9]\d{9}\b/);
+                                if (mMatch) rawMob = mMatch[0];
+                            }
+                            if (!status) status = "Completed";
+                        } else if (sheetSvc === "aadhar_online") {
+                            if (idxSrn !== -1 && idxSrn < rowStr.length) idNum = rowStr[idxSrn];
+                            else if (rowStr[2]) idNum = rowStr[2];
+
+                            if (!status) {
+                                const remLower = remark.toLowerCase();
+                                if (remLower.includes("baki") || remLower.includes("not resiv") || remLower.includes("not reciv") || remLower.includes("name baki")) {
+                                    status = "Pending";
+                                } else {
+                                    status = "Completed";
+                                }
+                            }
+                        } else if (sheetSvc === "pancard") {
+                            if (idxPan !== -1 && idxPan < rowStr.length) panType = rowStr[idxPan];
+                            else if (rowStr[2] && (rowStr[2].includes("PAN") || rowStr[2].includes("NEW") || rowStr[2].includes("CHANGE"))) panType = rowStr[2];
+                            status = "Completed";
+                        } else if (sheetSvc === "aayushman") {
+                            if (idxRation !== -1 && idxRation < rowStr.length) idNum = rowStr[idxRation];
+                            else if (rowStr[2]) idNum = rowStr[2];
+
+                            const remLower = remark.toLowerCase();
+                            if (remLower.includes("ok")) status = "Completed";
+                            else if (remLower.includes("renew")) status = "Renew";
+                            else if (remLower.includes("new")) status = "New";
+                            else status = "InProcess";
+                        } else {
+                            if (idxSid !== -1) idNum = rowStr[idxSid];
+                            else if (idxSrn !== -1) idNum = rowStr[idxSrn];
+                            else if (idxRation !== -1) idNum = rowStr[idxRation];
+                            else if (rowStr[2]) idNum = rowStr[2];
+                        }
+
+                        if (status.toLowerCase().includes("process")) status = "InProcess";
+                        else if (status.toLowerCase().includes("complete") || status.toLowerCase() === "ok") status = "Completed";
+
+                        if (name || idNum || rawMob) {
+                            const nextId = staticRecords.reduce((max, rec) => Math.max(max, rec.id || 0), 0) + 1;
+                            const normMob = rawMob.replace(/\D/g, "").slice(-10);
+                            const isBaki = (remark.toLowerCase().includes("baki") || remark.toLowerCase().includes("not reciv") || remark.toLowerCase().includes("no reciv") || remark.toLowerCase().includes("not resiv")) ? 1 : 0;
+
+                            staticRecords.unshift({
+                                id: nextId,
+                                file_id: newFileId,
+                                service_type: sheetSvc,
+                                record_date: recDate,
+                                name: name,
+                                mobile: rawMob,
+                                normalized_mobile: normMob,
+                                id_number: idNum,
+                                pan_type: panType,
+                                status: status || "InProcess",
+                                fee_amt: feeAmt,
+                                total_amt: totalAmt,
+                                remark: remark,
+                                is_baki: isBaki
+                            });
+                            sheetRowCount++;
+                            totalImported++;
+                        }
+                    }
+
+                    if (sheetRowCount > 0) {
+                        sheetsProcessed++;
                     }
                 });
 
@@ -1147,15 +1339,16 @@ async function submitFileUpload() {
                 files.unshift({
                     id: newFileId,
                     filename: selectedUploadFile.name,
-                    service_type: svcType !== "auto" ? svcType : "ucaadhar",
-                    row_count: imported,
+                    service_type: detectedOverallService || (svcType !== "auto" ? svcType : "ucaadhar"),
+                    row_count: totalImported,
                     file_size: selectedUploadFile.size,
                     uploaded_at: new Date().toISOString().replace("T", " ").substring(0, 19)
                 });
                 saveStaticFiles(files);
 
                 localStorage.setItem(STORAGE_KEY, JSON.stringify(staticRecords));
-                showToast(`Successfully imported ${imported} records!`, "success");
+                const sheetInfo = sheetsProcessed > 1 ? ` across ${sheetsProcessed} sheets` : "";
+                showToast(`Successfully imported ${totalImported} records${sheetInfo}!`, "success");
                 closeModal("modal-upload");
                 selectedUploadFile = null;
                 document.getElementById("file-input").value = "";

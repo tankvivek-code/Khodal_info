@@ -83,47 +83,38 @@ def clean_phone(val: Any) -> Tuple[str, str]:
     return s, digits
 
 
-def parse_service_excel_or_csv(file_path: str, file_id: int, forced_service: Optional[str] = None) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
-    """
-    Parses any of the 4 office services:
-    - demo1: ucaadhar (date, sidnum, name, mobilenum, total amt, fee, status, remark)
-    - demo2: aadhar_online (date, name, srnnum, mobilenum, remark)
-    - demo3: pancard (date, name, pancard new and change, mobilenum, remark)
-    - demo4: aayushman (date, ration/aayushman number, mobilenum, name, remark)
-    """
-    ext = os.path.splitext(file_path)[1].lower()
-    
-    if ext in [".xlsx", ".xlsm"]:
-        df = pd.read_excel(file_path, engine="openpyxl", dtype=str)
-    elif ext == ".xls":
-        df = pd.read_excel(file_path, engine="xlrd", dtype=str)
-    elif ext == ".csv":
-        try:
-            df = pd.read_csv(file_path, dtype=str, encoding="utf-8", on_bad_lines="skip")
-        except Exception:
-            try:
-                df = pd.read_csv(file_path, dtype=str, encoding="latin1", on_bad_lines="skip")
-            except Exception:
-                with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-                    lines = [line.strip() for line in f if line.strip()]
-                    parsed_rows = list(csv.reader(lines))
-                if parsed_rows:
-                    max_cols = max(len(r) for r in parsed_rows)
-                    header = parsed_rows[0] + [f"Col_{i}" for i in range(len(parsed_rows[0]), max_cols)]
-                    padded = [r + [""] * (max_cols - len(r)) for r in parsed_rows[1:]]
-                    df = pd.DataFrame(padded, columns=header)
-                else:
-                    df = pd.DataFrame()
-    else:
-        raise ValueError(f"Unsupported file format: {ext}")
-
+def parse_single_sheet_df(
+    df: pd.DataFrame,
+    file_path: str,
+    file_id: int,
+    sheet_name: str = "",
+    forced_service: Optional[str] = None
+) -> Tuple[List[Dict[str, Any]], str, List[str]]:
     raw_headers = [str(c).strip() for c in df.columns]
-    service_type = forced_service if forced_service and forced_service != "auto" else detect_service_type_from_content(raw_headers, file_path)
+    
+    # Check if sheet_name itself suggests a service
+    sheet_name_clean = clean_header_name(sheet_name)
+    inferred_service = None
+    if "srn" in sheet_name_clean or "online" in sheet_name_clean:
+        inferred_service = "aadhar_online"
+    elif "pan" in sheet_name_clean:
+        inferred_service = "pancard"
+    elif "ration" in sheet_name_clean or "ayushman" in sheet_name_clean or "aayushman" in sheet_name_clean:
+        inferred_service = "aayushman"
+    elif "sid" in sheet_name_clean or "uc" in sheet_name_clean:
+        inferred_service = "ucaadhar"
+
+    service_type = (
+        forced_service
+        if forced_service and forced_service != "auto"
+        else (inferred_service or detect_service_type_from_content(raw_headers, file_path))
+    )
 
     records = []
-    current_date = datetime.now().strftime("%Y-%m-%d")
+    # Check if sheet_name is a date
+    sheet_date = normalize_date_str(sheet_name)
+    current_date = sheet_date if sheet_date else datetime.now().strftime("%Y-%m-%d")
 
-    # Lowercase mapped header index lookup
     col_names = [clean_header_name(c) for c in raw_headers]
 
     def find_col_idx(*synonyms):
@@ -159,7 +150,7 @@ def parse_service_excel_or_csv(file_path: str, file_id: int, forced_service: Opt
         if len(non_empty) == 1 and date_candidates:
             current_date = normalize_date_str(date_candidates[0])
             continue
-        elif date_candidates and (idx_date == -1 or idx_name != -1 and not row_vals[idx_name]):
+        elif date_candidates and (idx_date == -1 or (idx_name != -1 and not row_vals[idx_name])):
             # Has date but no name -> date divider row
             current_date = normalize_date_str(date_candidates[0])
             continue
@@ -200,11 +191,10 @@ def parse_service_excel_or_csv(file_path: str, file_id: int, forced_service: Opt
                 try:
                     total_amt = float(row_vals[idx_total])
                 except Exception:
-                    # e.g. 'NEW'
                     if row_vals[idx_total].upper() == "NEW":
                         remark = f"NEW {remark}".strip()
 
-            # Second fee column (often column index 5 in UC Aadhaar sheet)
+            # Second fee column
             if idx_fee != -1 and idx_fee < len(row_vals):
                 try:
                     fee_amt = float(row_vals[idx_fee])
@@ -216,7 +206,6 @@ def parse_service_excel_or_csv(file_path: str, file_id: int, forced_service: Opt
                 except Exception:
                     pass
 
-            # Check if mobile is in remarks (like 'NAME CHANGE-8200219500' or '9723350324')
             if not raw_mob and remark:
                 m_match = PHONE_REGEX.search(remark)
                 if m_match:
@@ -252,7 +241,6 @@ def parse_service_excel_or_csv(file_path: str, file_id: int, forced_service: Opt
                 status = "InProcess"
 
         else:
-            # Fallback general
             if idx_sid != -1: id_num = row_vals[idx_sid]
             elif idx_srn != -1: id_num = row_vals[idx_srn]
             elif idx_ration != -1: id_num = row_vals[idx_ration]
@@ -279,12 +267,76 @@ def parse_service_excel_or_csv(file_path: str, file_id: int, forced_service: Opt
                 "extra_data": {}
             })
 
+    return records, service_type, raw_headers
+
+
+def parse_service_excel_or_csv(file_path: str, file_id: int, forced_service: Optional[str] = None) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """
+    Parses any office spreadsheet (Excel or CSV), reading ALL sheets if multiple exist.
+    """
+    ext = os.path.splitext(file_path)[1].lower()
+    sheets_dict = {}
+
+    if ext in [".xlsx", ".xlsm"]:
+        sheets_dict = pd.read_excel(file_path, sheet_name=None, engine="openpyxl", dtype=str)
+    elif ext == ".xls":
+        sheets_dict = pd.read_excel(file_path, sheet_name=None, engine="xlrd", dtype=str)
+    elif ext == ".csv":
+        try:
+            df = pd.read_csv(file_path, dtype=str, encoding="utf-8", on_bad_lines="skip")
+        except Exception:
+            try:
+                df = pd.read_csv(file_path, dtype=str, encoding="latin1", on_bad_lines="skip")
+            except Exception:
+                with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                    lines = [line.strip() for line in f if line.strip()]
+                    parsed_rows = list(csv.reader(lines))
+                if parsed_rows:
+                    max_cols = max(len(r) for r in parsed_rows)
+                    header = parsed_rows[0] + [f"Col_{i}" for i in range(len(parsed_rows[0]), max_cols)]
+                    padded = [r + [""] * (max_cols - len(r)) for r in parsed_rows[1:]]
+                    df = pd.DataFrame(padded, columns=header)
+                else:
+                    df = pd.DataFrame()
+        sheets_dict = {"CSV": df}
+    else:
+        raise ValueError(f"Unsupported file format: {ext}")
+
+    all_records = []
+    detected_services = []
+    all_headers = []
+
+    for s_name, df_sheet in sheets_dict.items():
+        if df_sheet is None or df_sheet.empty:
+            continue
+        records, svc, headers = parse_single_sheet_df(
+            df=df_sheet,
+            file_path=file_path,
+            file_id=file_id,
+            sheet_name=str(s_name),
+            forced_service=forced_service
+        )
+        if records:
+            all_records.extend(records)
+            detected_services.append(svc)
+            all_headers.extend(headers)
+
+    # Determine predominant service type
+    if forced_service and forced_service != "auto":
+        overall_service = forced_service
+    elif detected_services:
+        overall_service = max(set(detected_services), key=detected_services.count)
+    else:
+        overall_service = "general"
+
     summary = {
-        "service_type": service_type,
-        "total_rows_parsed": len(records),
-        "headers": raw_headers
+        "service_type": overall_service,
+        "total_rows_parsed": len(all_records),
+        "sheets_count": len(sheets_dict),
+        "sheet_names": list(sheets_dict.keys()),
+        "headers": all_headers
     }
-    return records, summary
+    return all_records, summary
 
 
 def export_records_to_excel(records: List[Dict[str, Any]], export_dir: str, service_type: Optional[str] = None) -> str:
