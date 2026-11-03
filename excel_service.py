@@ -186,7 +186,7 @@ def parse_single_sheet_df(
         idx_name = find_c("name", "party", "client")
         idx_sid = find_c("sid", "enrolment", "enrollment")
         idx_srn = find_c("srn")
-        idx_pan = find_c("pan")
+        idx_pan = find_c("pan change", "pan new", "pan type", "pan")
         idx_ration = find_c("ration", "ayushman", "aayushman")
         idx_mobile = find_c("mobile", "mo", "contact", "phone")
         idx_status = find_c("status")
@@ -201,11 +201,14 @@ def parse_single_sheet_df(
 
         joined = " ".join(cells).upper()
 
-        # Check if row has an actual Aadhaar SID
+        # Determine if row has data markers (SID, phone number, or integer index)
+        first_cell = cells[0].replace(".0", "").strip() if cells else ""
+        has_int_index = first_cell.isdigit() and len(first_cell) <= 6
+        has_phone = any(PHONE_REGEX.search(c.replace(".0", "")) for c in cells)
         has_sid = any(re.search(r"\bS\d{15,}", c, re.I) for c in cells)
 
-        # Check if table header row (only if not an actual SID record)
-        if not has_sid:
+        # Check if table header row (only if not an actual data row with index/phone/SID)
+        if not has_sid and not has_phone and not has_int_index:
             header_keywords = [
                 r"\bNAME\b", r"\bPARTY\b", r"\bDATE\b", r"\bMOBILE\b", r"\bMO\b", r"\bPHONE\b",
                 r"\bSRN\b", r"\bSID\b", r"\bPAN\b", r"\bSTATUS\b", r"\bREMARK\b", r"\bTOTAL\b",
@@ -355,7 +358,7 @@ def parse_single_sheet_df(
         # 6. Name
         if not name and idx_name != -1 and idx_name < len(cells) and cells[idx_name]:
             c_name = cells[idx_name]
-            if not c_name.startswith("S1") and not re.search(r"\bS\d{15,}", c_name) and not c_name.replace(".", "").isdigit():
+            if not c_name.startswith("S1") and not re.search(r"\bS\d{15,}", c_name) and not c_name.replace(".", "").isdigit() and not normalize_date_str(c_name):
                 name = c_name
 
         # Case A: Format 1 (Col 1 is SID, Col 2 is Name)
@@ -365,14 +368,14 @@ def parse_single_sheet_df(
             if cand_col < len(cells):
                 cand = cells[cand_col]
                 cand_u = cand.upper()
-                if cand and not cand_u.startswith("COMPLET") and not cand_u.startswith("INPROCESS") and not cand_u.startswith("REJECT") and not cand.replace(".", "").isdigit():
+                if cand and not cand_u.startswith("COMPLET") and not cand_u.startswith("INPROCESS") and not cand_u.startswith("REJECT") and not cand.replace(".", "").isdigit() and not normalize_date_str(cand):
                     name = cand
 
-        # Case B: Col 1 is Customer Name directly
+        # Case B: Col 1 is Customer Name directly (must NOT be a date!)
         if not name and len(cells) > 1:
             cand = cells[1]
             cand_u = cand.upper()
-            if cand and not cand.startswith("S1") and not cand_u.startswith("COMPLET") and not cand_u.startswith("INPROCESS") and not cand_u.startswith("REJECT") and not cand.replace(".", "").isdigit():
+            if cand and not cand.startswith("S1") and not cand_u.startswith("COMPLET") and not cand_u.startswith("INPROCESS") and not cand_u.startswith("REJECT") and not cand.replace(".", "").isdigit() and not normalize_date_str(cand):
                 if cand_u not in NON_NAME_WORDS and not any(kw in cand_u for kw in ["ID", "TOTAL"]):
                     name = cand
 
@@ -381,7 +384,7 @@ def parse_single_sheet_df(
             for i, c in enumerate(cells):
                 if c.upper() in ["NAME", "NAME:"] and i + 1 < len(cells):
                     next_c = cells[i + 1]
-                    if next_c and next_c.upper() not in NON_NAME_WORDS and not next_c.replace(".", "").isdigit():
+                    if next_c and next_c.upper() not in NON_NAME_WORDS and not next_c.replace(".", "").isdigit() and not normalize_date_str(next_c):
                         name = next_c
                         break
 
@@ -390,19 +393,19 @@ def parse_single_sheet_df(
             for i in range(3, len(cells)):
                 c = cells[i]
                 c_u = c.upper()
-                if not c or c.replace(".", "").isdigit() or PHONE_REGEX.search(c):
+                if not c or c.replace(".", "").isdigit() or PHONE_REGEX.search(c) or normalize_date_str(c):
                     continue
                 if "/" in c:
                     part0 = c.split("/")[0].strip()
-                    if len(part0.split()) >= 2 and part0.upper() not in NON_NAME_WORDS:
+                    if len(part0.split()) >= 2 and part0.upper() not in NON_NAME_WORDS and not normalize_date_str(part0):
                         name = part0
                         break
                 elif "-" in c and "NAME" in c_u:
                     clean_nm = re.sub(r"\bNAME\b", "", c, flags=re.I).replace("-", "").strip()
-                    if clean_nm:
+                    if clean_nm and not normalize_date_str(clean_nm):
                         name = clean_nm
                         break
-                elif len(c.split()) >= 2 and c_u not in NON_NAME_WORDS:
+                elif len(c.split()) >= 2 and c_u not in NON_NAME_WORDS and not normalize_date_str(c):
                     name = c
                     break
 
@@ -415,16 +418,20 @@ def parse_single_sheet_df(
         if idx_remark != -1 and idx_remark < len(cells) and cells[idx_remark]:
             remarks_list.append(cells[idx_remark])
 
-        for c in cells:
+        for idx_c, c in enumerate(cells):
             if not c:
                 continue
             if c == name or c == id_num or c == disp_mob or c.replace(".0", "") == norm_mob:
+                continue
+            if idx_c == idx_date or normalize_date_str(c):
+                continue
+            if idx_c == idx_pan or c == pan_type:
                 continue
             if c.upper() in ["COMPLETED", "INPROCESS", "IN PROCESS", "REJECT", "REJECTED", "PENDING"]:
                 continue
             if c.replace(".", "", 1).isdigit() and float(c) < 1000:
                 continue
-            if c.upper() in ["NO", "SLNO", "SID NUMBER", "TOTAL", "STATUS", "NAME", "MOBILE"]:
+            if c.upper() in ["NO", "SLNO", "SR NO", "SID NUMBER", "TOTAL", "STATUS", "NAME", "MOBILE"]:
                 continue
             if c not in remarks_list:
                 remarks_list.append(c)

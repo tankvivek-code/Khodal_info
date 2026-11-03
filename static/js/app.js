@@ -1371,7 +1371,7 @@ async function submitFileUpload() {
                         idxName = findC(['name', 'party', 'client']);
                         idxSid = findC(['sid', 'enrolment', 'enrollment']);
                         idxSrn = findC(['srn']);
-                        idxPan = findC(['pan']);
+                        idxPan = findC(['pan change', 'pan new', 'pan type', 'pan']);
                         idxRation = findC(['ration', 'ayushman', 'aayushman']);
                         idxMobile = findC(['mobile', 'mo', 'contact', 'phone']);
                         idxStatus = findC(['status']);
@@ -1391,12 +1391,24 @@ async function submitFileUpload() {
                         if (rowStr.every(c => c === "" || c.toLowerCase() === "nan")) continue;
 
                         const joinedUpper = rowStr.join(" ").toUpperCase();
+                        const firstCell = (rowStr[0] || "").replace(/\.0$/, "").trim();
+                        const hasIntegerIndex = /^\d+$/.test(firstCell);
+                        const hasPhone = rowStr.some(c => /\b[6-9]\d{9}\b/.test(c.replace(/\.0$/, "").replace(/\s+/g, "")));
+                        const hasSid = rowStr.some(c => /S\d{15,30}/i.test(c));
 
-                        // 1. Check if header row
-                        if (joinedUpper.includes("ENROLMENT") || joinedUpper.includes("SID NUMBER") || joinedUpper.includes("SRN") || joinedUpper.includes("RATION CARD") || joinedUpper.includes("PAN CHANGE") ||
-                            (rowStr.slice(0, 2).some(cell => ["NO", "SLNO", "SR NO", "SRNO"].includes(cell.toUpperCase())) && (joinedUpper.includes("NAME") || joinedUpper.includes("STATUS") || joinedUpper.includes("TOTAL") || joinedUpper.includes("SID") || joinedUpper.includes("DATE")))) {
-                            updateColumns(rowStr);
-                            continue;
+                        // 1. Check if header row (Never treat a data row as header!)
+                        if (!hasIntegerIndex && !hasPhone && !hasSid) {
+                            const headerWords = ["NAME", "PARTY", "DATE", "MOBILE", "MO", "PHONE", "SRN", "SID", "PAN", "STATUS", "REMARK", "TOTAL", "FEE", "RATION", "AYUSHMAN", "SLNO", "SR NO", "ENROLMENT"];
+                            const matchCount = headerWords.filter(w => new RegExp(`\\b${w}\\b`, 'i').test(joinedUpper)).length;
+                            if (matchCount >= 2 && /NAME|PARTY|SRN|SID|PAN|RATION|ENROLMENT|SLNO|SR NO/i.test(joinedUpper)) {
+                                updateColumns(rowStr);
+                                continue;
+                            }
+                            if (joinedUpper.includes("ENROLMENT") || joinedUpper.includes("SID NUMBER") || joinedUpper.includes("SRN") || joinedUpper.includes("RATION CARD") ||
+                                (rowStr.slice(0, 2).some(cell => ["NO", "SLNO", "SR NO", "SRNO"].includes(cell.toUpperCase())) && (joinedUpper.includes("NAME") || joinedUpper.includes("STATUS") || joinedUpper.includes("TOTAL") || joinedUpper.includes("SID") || joinedUpper.includes("DATE")))) {
+                                updateColumns(rowStr);
+                                continue;
+                            }
                         }
 
                         if (headers.length === 0) {
@@ -1404,23 +1416,19 @@ async function submitFileUpload() {
                         }
 
                         // 2. Check if date divider row
-                        const hasStatus = /COMPLET|INPROCESS|IN PROCESS|REJECT|PENDING/i.test(joinedUpper);
-                        const dateMatches = rowStr.map(parseDateStr).filter(d => Boolean(d));
-
-                        if (dateMatches.length > 0 && !hasStatus) {
-                            const firstCell = (rowStr[0] || "").replace(/\.0$/, "").trim();
-                            if (!/^\d{1,4}$/.test(firstCell)) {
-                                currentSheetDate = dateMatches[0];
+                        const nonEmpty = rowStr.filter(s => s !== "" && s.toLowerCase() !== "nan");
+                        if (nonEmpty.length <= 2 && !hasPhone && !hasSid) {
+                            const dMatches = nonEmpty.map(parseDateStr).filter(Boolean);
+                            if (dMatches.length > 0 && !hasIntegerIndex) {
+                                currentSheetDate = dMatches[0];
                                 continue;
                             }
                         }
 
                         // 3. Check if subtotal summary row or ID divider row
-                        const nonEmpty = rowStr.filter(s => s !== "" && s.toLowerCase() !== "nan");
-                        const hasSidMatch = rowStr.some(s => /S\d{15,30}/i.test(s));
-                        if (!hasSidMatch) {
+                        if (!hasSid && !hasPhone) {
                             if (nonEmpty.every(s => /^[\d\.\,]+$/.test(s))) continue;
-                            if (/BRIJAL ID|MANISH ID|TOTAL/i.test(joinedUpper)) continue;
+                            if (/BRIJAL ID|MANISH ID|TOTAL/i.test(joinedUpper) && !hasIntegerIndex) continue;
                         }
 
                         // 4. Extract SID / SRN / ID Number & authoritative Date from SID
@@ -1474,7 +1482,7 @@ async function submitFileUpload() {
                         let name = "";
                         if (idxName !== -1 && idxName < rowStr.length && rowStr[idxName]) {
                             const cand = rowStr[idxName];
-                            if (!cand.startsWith("S1") && !/^[\d\.]+$/.test(cand)) {
+                            if (!cand.startsWith("S1") && !/^[\d\.]+$/.test(cand) && !parseDateStr(cand)) {
                                 name = cand;
                             }
                         }
@@ -1486,7 +1494,7 @@ async function submitFileUpload() {
                             if (candCol < rowStr.length) {
                                 const cand = rowStr[candCol];
                                 const candU = cand.toUpperCase();
-                                if (cand && !candU.startsWith("COMPLET") && !candU.startsWith("INPROCESS") && !candU.startsWith("REJECT") && !/^[\d\.]+$/.test(cand)) {
+                                if (cand && !candU.startsWith("COMPLET") && !candU.startsWith("INPROCESS") && !candU.startsWith("REJECT") && !/^[\d\.]+$/.test(cand) && !parseDateStr(cand)) {
                                     name = cand;
                                 }
                             }
@@ -1496,7 +1504,7 @@ async function submitFileUpload() {
                         if (!name && rowStr.length > 1) {
                             const cand = rowStr[1];
                             const candU = cand.toUpperCase();
-                            if (cand && !cand.startsWith("S1") && !candU.startsWith("COMPLET") && !candU.startsWith("INPROCESS") && !candU.startsWith("REJECT") && !/^[\d\.]+$/.test(cand)) {
+                            if (cand && !cand.startsWith("S1") && !candU.startsWith("COMPLET") && !candU.startsWith("INPROCESS") && !candU.startsWith("REJECT") && !/^[\d\.]+$/.test(cand) && !parseDateStr(cand)) {
                                 if (!NON_NAME_SET.has(candU) && !candU.includes("ID") && !candU.includes("TOTAL")) {
                                     name = cand;
                                 }
@@ -1508,7 +1516,7 @@ async function submitFileUpload() {
                             for (let i = 0; i < rowStr.length; i++) {
                                 if (["NAME", "NAME:"].includes(rowStr[i].toUpperCase()) && i + 1 < rowStr.length) {
                                     const nextC = rowStr[i + 1];
-                                    if (nextC && !NON_NAME_SET.has(nextC.toUpperCase()) && !/^[\d\.]+$/.test(nextC)) {
+                                    if (nextC && !NON_NAME_SET.has(nextC.toUpperCase()) && !/^[\d\.]+$/.test(nextC) && !parseDateStr(nextC)) {
                                         name = nextC;
                                         break;
                                     }
@@ -1518,23 +1526,23 @@ async function submitFileUpload() {
 
                         // Case D: Person name in extra columns
                         if (!name) {
-                            for (let i = 3; i < rowStr.length; i++) {
+                            for (let i = 2; i < rowStr.length; i++) {
                                 const c = rowStr[i];
                                 const cU = c.toUpperCase();
-                                if (!c || /^[\d\.]+$/.test(c) || /\b[6-9]\d{9}\b/.test(c)) continue;
+                                if (!c || /^[\d\.]+$/.test(c) || /\b[6-9]\d{9}\b/.test(c) || parseDateStr(c)) continue;
                                 if (c.includes("/")) {
                                     const part0 = c.split("/")[0].trim();
-                                    if (part0.split(/\s+/).length >= 2 && !NON_NAME_SET.has(part0.toUpperCase())) {
+                                    if (part0.split(/\s+/).length >= 2 && !NON_NAME_SET.has(part0.toUpperCase()) && !parseDateStr(part0)) {
                                         name = part0;
                                         break;
                                     }
                                 } else if (c.includes("-") && cU.includes("NAME")) {
                                     const cleanNm = c.replace(/\bNAME\b/gi, "").replace("-", "").trim();
-                                    if (cleanNm) {
+                                    if (cleanNm && !parseDateStr(cleanNm)) {
                                         name = cleanNm;
                                         break;
                                     }
-                                } else if (c.split(/\s+/).length >= 2 && !NON_NAME_SET.has(cU)) {
+                                } else if (c.split(/\s+/).length >= 2 && !NON_NAME_SET.has(cU) && !parseDateStr(c)) {
                                     name = c;
                                     break;
                                 }
@@ -1545,7 +1553,21 @@ async function submitFileUpload() {
                             name = "—";
                         }
 
-                        // 6. Status
+                        // 6. PAN Type
+                        let panType = "";
+                        if (idxPan !== -1 && idxPan < rowStr.length && rowStr[idxPan]) {
+                            panType = rowStr[idxPan];
+                        } else {
+                            for (const c of rowStr) {
+                                const cU = c.toUpperCase();
+                                if (cU === "PAN NEW" || cU === "PAN CHANGE" || cU.includes("PAN")) {
+                                    panType = c;
+                                    break;
+                                }
+                            }
+                        }
+
+                        // 7. Status
                         let status = "Completed";
                         if (/REJECT/i.test(joinedUpper)) status = "Reject";
                         else if (/INPROCESS|IN PROCESS/i.test(joinedUpper)) status = "InProcess";
@@ -1558,7 +1580,7 @@ async function submitFileUpload() {
                             else if (stRaw.includes("complet")) status = "Completed";
                         }
 
-                        // 7. Total & Fee
+                        // 8. Total & Fee
                         let totalAmt = 0;
                         let feeAmt = 0;
                         if (idxTotal !== -1 && idxTotal < rowStr.length && rowStr[idxTotal]) {
@@ -1588,7 +1610,7 @@ async function submitFileUpload() {
                             }
                         }
 
-                        // 8. Mobile & Remarks
+                        // 9. Mobile & Remarks
                         let rawMob = (idxMobile !== -1 && idxMobile < rowStr.length) ? rowStr[idxMobile] : "";
                         if (!rawMob) {
                             const mPh = joinedUpper.match(/\b[6-9]\d{9}\b/);
@@ -1598,19 +1620,24 @@ async function submitFileUpload() {
 
                         const remarksList = [];
                         if (idxRemark !== -1 && idxRemark < rowStr.length && rowStr[idxRemark]) {
-                            remarksList.push(rowStr[idxRemark]);
+                            const rVal = rowStr[idxRemark];
+                            if (rVal !== name && rVal !== idNum && rVal !== rawMob && rVal !== panType && !parseDateStr(rVal)) {
+                                remarksList.push(rVal);
+                            }
                         }
-                        rowStr.forEach(c => {
+                        rowStr.forEach((c, cIdx) => {
                             if (!c) return;
                             if (c === name || c === idNum || c === rawMob || c.replace(/\.0$/, "") === rawMob) return;
+                            if (c === panType || (idxPan !== -1 && cIdx === idxPan)) return;
+                            if (parseDateStr(c) || (idxDate !== -1 && cIdx === idxDate)) return;
                             if (/COMPLETED|INPROCESS|IN PROCESS|REJECT|REJECTED|PENDING/i.test(c)) return;
                             if (/^[\d\.]+$/.test(c) && parseFloat(c) < 1000) return;
-                            if (["NO", "SLNO", "SID NUMBER", "TOTAL", "STATUS", "NAME", "MOBILE"].includes(c.toUpperCase())) return;
+                            if (["NO", "SLNO", "SR NO", "SRNO", "SID NUMBER", "TOTAL", "STATUS", "NAME", "MOBILE"].includes(c.toUpperCase())) return;
                             if (!remarksList.includes(c)) remarksList.push(c);
                         });
                         const remark = remarksList.join(" | ");
 
-                        // 9. Service determination
+                        // 10. Service determination
                         let rowSvc = sheetSvc;
                         const cleanId = (idNum || "").trim().toUpperCase();
                         if (!svcType || svcType === "auto") {
@@ -1618,7 +1645,7 @@ async function submitFileUpload() {
                                 rowSvc = "ucaadhar";
                             } else if (cleanId.startsWith("SRN") || (cleanId.startsWith("S") && cleanId.length >= 10 && cleanId.length <= 16)) {
                                 rowSvc = "aadhar_online";
-                            } else if (idxPan !== -1 && rowStr[idxPan]) {
+                            } else if (panType || (idxPan !== -1 && rowStr[idxPan])) {
                                 rowSvc = "pancard";
                             } else if (idxRation !== -1 && rowStr[idxRation]) {
                                 rowSvc = "aayushman";
@@ -1627,8 +1654,8 @@ async function submitFileUpload() {
                             }
                         }
 
-                        // Add record if we have name or idNum
-                        if (name || idNum) {
+                        // Add record if we have name, idNum, or rawMob
+                        if (name || idNum || rawMob) {
                             const nextId = staticRecords.reduce((max, rec) => Math.max(max, rec.id || 0), 0) + 1;
                             const normMob = rawMob.replace(/\D/g, "").slice(-10);
                             const isBaki = /BAKI|NOT RECIV|NOT RESIV|NO RECIV/i.test(remark) ? 1 : 0;
@@ -1642,7 +1669,7 @@ async function submitFileUpload() {
                                 mobile: rawMob,
                                 normalized_mobile: normMob,
                                 id_number: idNum,
-                                pan_type: (rowSvc === "pancard" && idxPan !== -1) ? rowStr[idxPan] : "",
+                                pan_type: panType || ((rowSvc === "pancard" && idxPan !== -1) ? rowStr[idxPan] : ""),
                                 status: status || "Completed",
                                 fee_amt: feeAmt,
                                 total_amt: totalAmt,

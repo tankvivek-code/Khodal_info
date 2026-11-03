@@ -130,12 +130,16 @@ def clear_all_database_records() -> bool:
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT stored_path FROM uploaded_files")
+        uploads_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "uploads"))
         for row in cursor.fetchall():
-            if row["stored_path"] and os.path.exists(row["stored_path"]):
-                try:
-                    os.remove(row["stored_path"])
-                except OSError:
-                    pass
+            p = row["stored_path"]
+            if p and os.path.exists(p):
+                abs_p = os.path.abspath(p)
+                if abs_p.startswith(uploads_dir):
+                    try:
+                        os.remove(abs_p)
+                    except OSError:
+                        pass
         cursor.execute("DELETE FROM office_records;")
         cursor.execute("DELETE FROM uploaded_files;")
         conn.commit()
