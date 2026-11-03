@@ -1,0 +1,28 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# SQLite journal & WAL temp files
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Exported files (keep folder via .gitkeep)
+exports/*
+!exports/.gitkeep
+
+# Temporary files & Editor settings
+.vscode/
+.idea/
+*.swp
+*.swo
+Thumbs.db
+Desktop.ini
+.DS_Store
