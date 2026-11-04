@@ -9,46 +9,45 @@ A complete, high-performance office management system specially built to store, 
 
 ---
 
+## 📱 100% Fully Responsive (Mobile, Tablet & Desktop)
+
+The entire interface has been upgraded with a responsive mobile-first architecture:
+- 📱 **Mobile (320px–480px)**: Compact navigation bar with 1-tap `+` (New Entry) and `Upload` buttons. Secondary actions (Master Users, Cloud DB, Backup DB, Uploaded Files, Master Excel Template, LAN Share) smoothly expand from a collapsible drawer menu.
+- 🪪 **Swipeable Service Tabs**: Smooth horizontal touch swiping across all 5 service categories without cutting off badges or breaking screen bounds.
+- 📊 **Responsive Metric Cards**: 2-column grid on phones, 3-column grid on tablets, and 6-column grid on desktops with auto-scaling text.
+- 📋 **Table Freeze Pane & Sticky Header**: On small screens, the table scrolls horizontally with momentum (`-webkit-overflow-scrolling: touch`), a sticky header (`thead th`), and a sticky primary column (`#` / Sr No) with a shadow boundary so you always retain row context.
+- 🪟 **Adaptive Modals**: All modals use dynamic viewport units (`max-height: 92dvh`), scrollable form bodies, and flexible grids (`grid-cols-1 sm:grid-cols-2`) to stay fully accessible even with on-screen mobile keyboards.
+- 🎯 **Touch Optimizations**: Hit targets are calibrated to 40–44px, and inputs are protected against unwanted iOS Safari auto-zoom.
+
+---
+
 ## 🌐 Live & Production Deployment
 
 When deployed to production (live on the internet):
-- **Central Cloud Database**: The application runs on your live server or cloud host. All client records and uploaded Excel files are stored on that server's persistent disk storage (`data/khodal_office.db` and `uploads/`).
-- **All Clients Share the Same Data**: Anyone who visits your live URL (`https://your-domain.com`) from Chrome, Edge, Safari, iPhone, Android, or desktop connects to the **same live database**.
+- **Central Cloud Database**: The application runs on your live server or cloud host (`https://khodal-office-hub.onrender.com/`). All client records and uploaded Excel files are stored on that server's persistent disk storage (`data/khodal_office.db` and `uploads/`).
+- **All Clients Share the Same Data**: Anyone who visits your live URL from Chrome, Edge, Safari, iPhone, Android, or desktop connects to the **same live database**.
 - **No Browser History Vulnerability**: A client clearing browser history on their phone or laptop has **zero impact** on the server's database. The data is safely hosted on the cloud server.
 
 ### 🚀 Production Deployment Options
 
-#### Option 1: Docker Compose on Cloud VPS (Recommended)
-Deploy on any Linux Cloud VPS (DigitalOcean, AWS EC2, Linode, Hetzner, Contabo):
+#### Option 1: Render.com (Live Web Service)
+- **Live URL**: `https://khodal-office-hub.onrender.com/`
+- Configured via `render.yaml` with persistent disk mounting `/var/data` for zero-data-loss durability.
+
+#### Option 2: Docker Compose on Cloud VPS (DigitalOcean, AWS, Linode)
 ```bash
-# 1. Clone repository
 git clone <your-repo-url> khodal-info
 cd khodal-info
-
-# 2. Start container with permanent volume
 docker compose up -d
 ```
-All records are permanently stored in the `khodal_office_data` Docker volume. The container automatically restarts if the server reboots.
-
-#### Option 2: Render.com (Web Service)
-1. Link your GitHub repository to Render.
-2. In the Render Dashboard under **Disks**, add a **Persistent Disk**:
-   - **Name:** `khodal-data`
-   - **Mount Path:** `/var/data`
-   - **Size:** `1 GB` (or more)
-3. Under **Environment Variables**, add:
-   - `DATA_DIR` = `/var/data`
-   - `PYTHON_VERSION` = `3.12.0`
-4. Start Command: `uvicorn app:app --host 0.0.0.0 --port $PORT`
+All records are permanently stored in the `khodal_office_data` Docker volume.
 
 #### Option 3: Local Office Server with Free Public HTTPS (Cloudflare Tunnel)
-Keep your office PC running as the server and give it a secure public HTTPS link for free:
 1. Run `START_KHODAL_OFFICE.bat` on the office computer.
 2. Run Cloudflare Tunnel:
    ```bash
    cloudflared tunnel --url http://localhost:8000
    ```
-3. You get a public HTTPS link (e.g. `https://khodal.yourdomain.com`) accessible from any browser or phone anywhere in the world.
 
 ---
 
