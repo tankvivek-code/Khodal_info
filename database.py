@@ -665,28 +665,6 @@ def clear_all_database_records() -> bool:
     return True
 
 
-def insert_bulk_records(records: List[Dict[str, Any]]) -> int:
-    if not records:
-        return 0
-    now = datetime.now().isoformat()
-    rows = []
-    for r in records:
-        raw_mob = str(r.get("mobile") or "").strip()
-        norm_mob = "".join(filter(str.isdigit, raw_mob))
-        
-        remark_str = str(r.get("remark") or "").strip()
-        is_baki = 1 if any(w in remark_str.lower() for w in ["baki", "not reciv", "not resiv", "no reciv", "payment baki", "name baki"]) else 0
-        
-        try:
-            total_amt = float(r.get("total_amt", 0.0) or 0.0)
-        except (ValueError, TypeError):
-            total_amt = 0.0
-            
-        try:
-            fee_amt = float(r.get("fee_amt", 0.0) or 0.0)
-        except (ValueError, TypeError):
-            fee_amt = 0.0
-
 def normalize_record_status(service_type: str, raw_status: Any) -> str:
     """
     Enforce status rules:
