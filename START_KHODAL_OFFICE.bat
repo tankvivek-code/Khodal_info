@@ -6,6 +6,9 @@ echo =====================================================================
 echo         KHODAL OFFICE DATA HUB - PERMANENT SAFE PLACE (SQLITE)
 echo =====================================================================
 echo.
+
+cd /d "%~dp0"
+
 echo [1/3] Checking Python installation...
 python --version >nul 2>&1
 if errorlevel 1 (
@@ -20,18 +23,18 @@ if not exist "data" mkdir "data"
 if not exist "uploads" mkdir "uploads"
 if not exist "exports" mkdir "exports"
 
-echo [3/3] Starting Permanent Safe Place Server on http://localhost:8000 ...
+echo [3/3] Starting Safe Place Database Server on http://localhost:8000 ...
 echo.
 echo ---------------------------------------------------------------------
-echo   🟢 SAFE PLACE ACTIVE: data\khodal_office.db
+echo   [OK] SAFE PLACE ACTIVE: data\khodal_office.db
 echo   Clearing browser history will NEVER delete your client records!
-echo   All office data is permanently saved on your hard drive (D: drive).
+echo   All office data is permanently saved on hard drive (D: drive).
 echo.
 echo   MASTER USERS:     manish  (Password: manish@7575)
 echo                     admin   (Password: admin@7575)
 echo   USER DATA STORE:  Permanently stored in database (khodal_office.db)
 echo ---------------------------------------------------------------------
 echo.
-echo Launching your browser now...
+echo Launching your browser now at http://localhost:8000 ...
 python app.py
 pause

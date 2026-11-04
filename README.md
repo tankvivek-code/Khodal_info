@@ -66,22 +66,29 @@ A complete, high-performance office management system specially built to store, 
 
 ---
 
-## 🚀 How to Run (Safe Place Mode)
+## 🚀 How to Run (Permanent Safe Place Mode)
 
-### Method 1: Double-Click Desktop Shortcut (Recommended)
-1. Run **`CREATE_DESKTOP_SHORTCUT.bat`** once to create the **"Khodal Office Data Hub"** icon on your Desktop.
+### Method 1: Automatic Windows Startup (Best — Run Always in Background)
+Double-click **`INSTALL_AUTO_STARTUP.bat`** once.
+- Whenever your computer turns on, the safe place database server automatically starts silently in the background!
+- You can open your browser to `http://localhost:8000` anytime and your database will always be active.
+- Clearing browser history will **NEVER** delete your data!
+
+### Method 2: Double-Click Desktop Shortcut
+1. Run **`CREATE_DESKTOP_SHORTCUT.bat`** to put the **"Khodal Office Data Hub"** icon on your Desktop.
 2. Double-click the shortcut anytime to launch the safe place database server. Your browser will automatically open to `http://localhost:8000`.
 
-### Method 2: Batch Launcher
+### Method 3: Batch Launcher
 Double-click **`START_KHODAL_OFFICE.bat`** in `D:\Khodal_info`.
+To stop the server, double-click **`STOP_KHODAL_OFFICE.bat`**.
 
-### Method 3: Command Line
+### Method 4: Command Line
 ```powershell
 python app.py
 ```
 Open your browser to:
 - **Local:** [http://localhost:8000](http://localhost:8000)
-- **Office LAN:** `http://192.168.1.7:8000`
+- **Office LAN:** `http://<your-lan-ip>:8000`
 
 ---
 
