@@ -1,1231 +1,1253 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
-    <title>Khodal Office Hub | Daily Service Tracker & Fast Search</title>
-
-    <!-- Tailwind CSS CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        brand: {
-                            50: '#eef2ff',
-                            100: '#e0e7ff',
-                            200: '#c7d2fe',
-                            300: '#a5b4fc',
-                            400: '#818cf8',
-                            500: '#6366f1',
-                            600: '#4f46e5',
-                            700: '#4338ca',
-                            800: '#3730a3',
-                            900: '#312e81',
-                        }
-                    }
-                }
-            }
-        }
-    </script>
-
-    <!-- Prevent aggressive browser caching on GitHub Pages -->
-    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-    <meta http-equiv="Pragma" content="no-cache">
-    <meta http-equiv="Expires" content="0">
-
-    <!-- Lucide Icons -->
-    <script src="https://unpkg.com/lucide@latest"></script>
-
-    <!-- SheetJS for client-side Excel reading & export -->
-    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-
-    <!-- Custom CSS -->
-    <link rel="stylesheet" href="static/css/custom.css?v=20261104R">
-</head>
-<body class="bg-slate-100 text-slate-800 min-h-screen flex flex-col antialiased">
-
-    <!-- MASTER USER LOGIN OVERLAY (id: manish / pass: manish@7575) -->
-    <div id="auth-login-modal" class="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 transition-all duration-300">
-        <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-200">
-            <!-- Header -->
-            <div class="bg-gradient-to-r from-brand-700 via-brand-600 to-indigo-600 p-5 sm:p-6 text-white text-center relative">
-                <div class="w-12 h-12 sm:w-14 sm:h-14 mx-auto mb-2 sm:mb-3 rounded-2xl bg-white/10 backdrop-blur-xs flex items-center justify-center border border-white/20 shadow-inner">
-                    <i data-lucide="shield-check" class="w-7 h-7 sm:w-8 sm:h-8 text-white"></i>
-                </div>
-                <h2 class="text-lg sm:text-xl font-bold tracking-tight">KHODAL OFFICE DATA HUB</h2>
-                <p class="text-brand-100 text-xs mt-1">Master User Authentication Required</p>
-            </div>
-
-            <!-- Body Form -->
-            <form onsubmit="handleMasterLogin(event)" class="p-5 sm:p-6 space-y-4">
-                <div id="login-error-alert" class="hidden p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs flex items-center gap-2">
-                    <i data-lucide="alert-circle" class="w-4 h-4 shrink-0"></i>
-                    <span id="login-error-text">Invalid User ID or Password</span>
-                </div>
-
-                <div>
-                    <label class="block text-xs font-semibold text-slate-700 mb-1">User ID</label>
-                    <div class="relative">
-                        <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                            <i data-lucide="user" class="w-4 h-4"></i>
-                        </span>
-                        <input type="text" id="login-username" value="manish" required
-                            class="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-hidden font-medium text-slate-800"
-                            placeholder="Enter user id (e.g. manish or admin)">
-                    </div>
-                </div>
-
-                <div>
-                    <label class="block text-xs font-semibold text-slate-700 mb-1">Password</label>
-                    <div class="relative">
-                        <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                            <i data-lucide="lock" class="w-4 h-4"></i>
-                        </span>
-                        <input type="password" id="login-password" required
-                            class="w-full pl-9 pr-10 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-hidden font-medium text-slate-800"
-                            placeholder="Enter password">
-                        <button type="button" onclick="togglePasswordVisibility('login-password', 'eye-icon-login')" class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer">
-                            <i data-lucide="eye" id="eye-icon-login" class="w-4 h-4"></i>
-                        </button>
-                    </div>
-                </div>
-
-                <div class="flex items-center justify-between text-xs text-slate-500 pt-1">
-                    <span class="flex items-center gap-1 font-mono text-[11px] bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
-                        <i data-lucide="key" class="w-3 h-3 text-slate-400"></i> Master ID: <strong>manish</strong> or <strong>admin</strong>
-                    </span>
-                    <span class="text-slate-400 font-semibold text-[11px] flex items-center gap-1">
-                        <i data-lucide="database" class="w-3 h-3 text-indigo-500"></i> Database Auth
-                    </span>
-                </div>
-
-                <button type="submit" id="login-submit-btn"
-                    class="w-full mt-2 py-2.5 px-4 bg-brand-600 hover:bg-brand-700 active:bg-brand-800 text-white font-semibold rounded-xl shadow-md hover:shadow-lg transition flex items-center justify-center gap-2 text-sm cursor-pointer">
-                    <i data-lucide="log-in" class="w-4 h-4"></i>
-                    <span>Sign In to Office Hub</span>
-                </button>
-                <div class="pt-2 flex items-center gap-2">
-                    <button type="button" onclick="quickFillLogin('manish', 'manish@7575')" class="flex-1 py-1.5 px-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl border border-slate-300 transition flex items-center justify-center gap-1 cursor-pointer">
-                        <i data-lucide="zap" class="w-3.5 h-3.5 text-amber-500"></i> 1-Click Manish
-                    </button>
-                    <button type="button" onclick="quickFillLogin('admin', 'admin@7575')" class="flex-1 py-1.5 px-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl border border-slate-300 transition flex items-center justify-center gap-1 cursor-pointer">
-                        <i data-lucide="shield" class="w-3.5 h-3.5 text-indigo-500"></i> 1-Click Admin
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- FULLSCREEN DRAG & DROP OVERLAY -->
-    <div id="fullscreen-drop-overlay" class="fixed inset-0 z-50 bg-slate-900/85 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-white text-center hidden pointer-events-none transition-all duration-200">
-        <div class="w-16 h-16 sm:w-20 sm:h-20 rounded-3xl bg-brand-600/30 border-2 border-dashed border-brand-400 flex items-center justify-center mb-4 animate-bounce">
-            <i data-lucide="upload-cloud" class="w-8 h-8 sm:w-10 sm:h-10 text-brand-300"></i>
-        </div>
-        <h2 class="text-xl sm:text-2xl font-bold tracking-tight mb-2">Drop File to Auto-Import in Real Time</h2>
-        <p class="text-slate-300 text-xs sm:text-sm max-w-md">Drop any Excel (.xlsx, .xls) or CSV with UC Aadhaar (SID), Aadhaar Online (SRN), PAN, or Ayushman sheets.</p>
-    </div>
-
-    <!-- TOP NAV HEADER -->
-    <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
-        <div class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
-            <div class="flex items-center justify-between h-16">
-                <!-- Branding -->
-                <div class="flex items-center gap-2.5 sm:gap-3">
-                    <div class="h-9 w-9 sm:h-10 sm:w-10 rounded-xl bg-gradient-to-tr from-brand-700 to-indigo-500 flex items-center justify-center text-white shadow-md shadow-brand-500/20 shrink-0">
-                        <i data-lucide="layers" class="w-5 h-5"></i>
-                    </div>
-                    <div>
-                        <div class="flex items-center gap-1.5 sm:gap-2">
-                            <h1 class="text-base sm:text-lg font-bold text-slate-900 tracking-tight">KHODAL</h1>
-                            <span class="text-[10px] sm:text-xs px-2 py-0.5 font-bold rounded-full bg-brand-50 text-brand-700 border border-brand-200 whitespace-nowrap">Daily Office Hub</span>
-                        </div>
-                        <p class="text-[11px] text-slate-500 hidden sm:block">UC Aadhaar • Aadhaar Online • PAN Card • Ayushman</p>
-                    </div>
-                </div>
-
-                <!-- Desktop Right Action Bar (Visible on md and up) -->
-                <div class="hidden md:flex items-center gap-2 lg:gap-2.5">
-                    <!-- Master User Profile Badge -->
-                    <div id="user-profile-badge" class="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-100 border border-slate-200 rounded-lg text-xs">
-                        <div id="user-avatar-initial" class="w-5 h-5 rounded-full bg-brand-600 text-white flex items-center justify-center font-bold text-[10px]">M</div>
-                        <span class="font-semibold text-slate-800" id="user-display-name">Manish</span>
-                        <span id="user-role-badge" class="text-[10px] px-1.5 py-0.5 rounded bg-brand-100 text-brand-800 font-bold hidden lg:inline">Master</span>
-                        <button onclick="logoutMasterUser()" title="Logout" class="text-slate-400 hover:text-rose-600 transition ml-1 p-0.5 rounded cursor-pointer">
-                            <i data-lucide="log-out" class="w-3.5 h-3.5"></i>
-                        </button>
-                    </div>
-
-                    <!-- Master Users Management Button -->
-                    <button onclick="openMasterUsersModal()" title="Manage Master Users in Database" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-semibold transition shadow-2xs cursor-pointer">
-                        <i data-lucide="shield" class="w-3.5 h-3.5 text-indigo-600"></i>
-                        <span class="hidden lg:inline">Master Users</span>
-                    </button>
-
-                    <!-- LAN Share Pill -->
-                    <div id="lan-share-box" class="hidden xl:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-800">
-                        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
-                        <span><span id="lan-label-display">Office LAN:</span> <strong id="lan-url-display" class="font-mono">Loading...</strong></span>
-                        <button onclick="copyShareUrl()" title="Copy Link to Share in Office" class="hover:text-emerald-950 p-1 rounded hover:bg-emerald-100 transition">
-                            <i data-lucide="copy" class="w-3.5 h-3.5"></i>
-                        </button>
-                    </div>
-
-                    <!-- Backup DB Button -->
-                    <button onclick="backupDatabase()" class="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition border border-emerald-200 shadow-2xs cursor-pointer" title="1-Click Permanent Database Backup">
-                        <i data-lucide="database" class="w-4 h-4 text-emerald-600"></i>
-                        <span class="hidden lg:inline">Backup DB</span>
-                    </button>
-
-                    <!-- Cloud DB Settings Button -->
-                    <button onclick="openCloudDbModal()" class="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-lg transition border border-purple-200 shadow-2xs cursor-pointer" title="Cloud Database & Safe Place Settings">
-                        <i data-lucide="cloud" class="w-4 h-4 text-purple-600"></i>
-                        <span class="hidden lg:inline">Cloud DB</span>
-                    </button>
-
-                    <!-- Files Manager Button -->
-                    <button onclick="openFilesModal()" class="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition border border-slate-200 cursor-pointer" title="View Uploaded File History">
-                        <i data-lucide="folder-archive" class="w-4 h-4 text-slate-600"></i>
-                        <span>Files</span>
-                    </button>
-
-                    <!-- Excel Template Button -->
-                    <a href="templates/Khodal_Office_Master_Template.xlsx" download="Khodal_Office_Master_Template.xlsx" class="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg transition border border-blue-200 shadow-2xs" title="Download Official Master Excel Format">
-                        <i data-lucide="file-spreadsheet" class="w-4 h-4 text-blue-600"></i>
-                        <span class="hidden lg:inline">Template</span>
-                    </a>
-
-                    <!-- Add Record Button -->
-                    <button onclick="openAddRecordModal()" class="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg shadow-2xs hover:shadow transition cursor-pointer">
-                        <i data-lucide="plus-circle" class="w-4 h-4 text-brand-600"></i>
-                        <span>New Entry</span>
-                    </button>
-
-                    <!-- Upload Daily Data Button -->
-                    <button onclick="openUploadModal()" class="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-brand-600 hover:bg-brand-700 rounded-lg shadow-sm hover:shadow transition cursor-pointer">
-                        <i data-lucide="upload-cloud" class="w-4 h-4"></i>
-                        <span>Upload Daily Data</span>
-                    </button>
-                </div>
-
-                <!-- Mobile Action Bar (Visible on mobile < md) -->
-                <div class="flex md:hidden items-center gap-1.5">
-                    <!-- Compact New Entry Button -->
-                    <button onclick="openAddRecordModal()" title="New Entry" class="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-white border border-slate-300 text-brand-600 hover:bg-slate-50 shadow-2xs transition cursor-pointer">
-                        <i data-lucide="plus" class="w-5 h-5"></i>
-                    </button>
-
-                    <!-- Compact Upload Daily Data Button -->
-                    <button onclick="openUploadModal()" class="inline-flex items-center gap-1 px-3 py-2 text-xs font-semibold text-white bg-brand-600 hover:bg-brand-700 rounded-lg shadow-2xs transition cursor-pointer">
-                        <i data-lucide="upload-cloud" class="w-4 h-4"></i>
-                        <span>Upload</span>
-                    </button>
-
-                    <!-- Mobile Menu Dropdown Toggle Button -->
-                    <button onclick="toggleMobileMenu()" id="mobile-menu-toggle-btn" class="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-slate-100 border border-slate-200 text-slate-700 hover:bg-slate-200 transition cursor-pointer" title="More Tools & Menu">
-                        <i data-lucide="menu" class="w-5 h-5"></i>
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Collapsible Mobile Menu Drawer (Below Header) -->
-        <div id="mobile-nav-menu" class="hidden md:hidden border-t border-slate-200 bg-white shadow-lg animate-slide-down flex-col px-4 py-3 space-y-3">
-            <!-- Active User Info Bar -->
-            <div class="flex items-center justify-between p-2.5 bg-slate-50 rounded-xl border border-slate-200 text-xs">
-                <div class="flex items-center gap-2">
-                    <div id="mobile-user-avatar" class="w-7 h-7 rounded-full bg-brand-600 text-white flex items-center justify-center font-bold text-xs">M</div>
-                    <div>
-                        <div class="font-bold text-slate-800" id="mobile-user-display-name">Manish</div>
-                        <div class="text-[10px] text-brand-700 font-semibold">Master Administrator</div>
-                    </div>
-                </div>
-                <button onclick="logoutMasterUser()" class="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg font-semibold text-xs border border-rose-200 flex items-center gap-1 transition cursor-pointer">
-                    <i data-lucide="log-out" class="w-3.5 h-3.5"></i> Logout
-                </button>
-            </div>
-
-            <!-- Quick Navigation Grid -->
-            <div class="grid grid-cols-2 gap-2 text-xs">
-                <button onclick="closeMobileMenu(); openMasterUsersModal();" class="flex items-center gap-2 p-2.5 rounded-xl bg-indigo-50/70 border border-indigo-200 text-indigo-800 hover:bg-indigo-100 font-semibold transition text-left cursor-pointer">
-                    <i data-lucide="shield" class="w-4 h-4 text-indigo-600 shrink-0"></i>
-                    <span>Master Users</span>
-                </button>
-
-                <button onclick="closeMobileMenu(); openCloudDbModal();" class="flex items-center gap-2 p-2.5 rounded-xl bg-purple-50/70 border border-purple-200 text-purple-800 hover:bg-purple-100 font-semibold transition text-left cursor-pointer">
-                    <i data-lucide="cloud" class="w-4 h-4 text-purple-600 shrink-0"></i>
-                    <span>Cloud DB</span>
-                </button>
-
-                <button onclick="closeMobileMenu(); backupDatabase();" class="flex items-center gap-2 p-2.5 rounded-xl bg-emerald-50/70 border border-emerald-200 text-emerald-800 hover:bg-emerald-100 font-semibold transition text-left cursor-pointer">
-                    <i data-lucide="database" class="w-4 h-4 text-emerald-600 shrink-0"></i>
-                    <span>Backup DB</span>
-                </button>
-
-                <button onclick="closeMobileMenu(); openFilesModal();" class="flex items-center gap-2 p-2.5 rounded-xl bg-slate-100 border border-slate-200 text-slate-800 hover:bg-slate-200 font-semibold transition text-left cursor-pointer">
-                    <i data-lucide="folder-archive" class="w-4 h-4 text-slate-600 shrink-0"></i>
-                    <span>Uploaded Files</span>
-                </button>
-
-                <a href="templates/Khodal_Office_Master_Template.xlsx" download="Khodal_Office_Master_Template.xlsx" class="flex items-center gap-2 p-2.5 rounded-xl bg-blue-50/70 border border-blue-200 text-blue-800 hover:bg-blue-100 font-semibold transition text-left">
-                    <i data-lucide="file-spreadsheet" class="w-4 h-4 text-blue-600 shrink-0"></i>
-                    <span>Excel Template</span>
-                </a>
-
-                <button onclick="closeMobileMenu(); copyShareUrl();" class="flex items-center gap-2 p-2.5 rounded-xl bg-amber-50/70 border border-amber-200 text-amber-800 hover:bg-amber-100 font-semibold transition text-left cursor-pointer">
-                    <i data-lucide="share-2" class="w-4 h-4 text-amber-600 shrink-0"></i>
-                    <span>Share Hub Link</span>
-                </button>
-            </div>
-        </div>
-    </header>
-
-    <!-- MAIN DASHBOARD CONTENT -->
-    <main class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-5 flex-1 w-full space-y-4 sm:space-y-5">
-
-        <!-- PERMANENT DATABASE STATUS BANNER -->
-        <div id="db-storage-status-banner" class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-3.5 py-2 bg-emerald-50/90 border border-emerald-200/90 rounded-xl text-xs text-emerald-900 shadow-2xs">
-            <div class="flex items-center gap-2">
-                <span class="relative flex h-2.5 w-2.5 shrink-0">
-                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                    <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-                </span>
-                <span id="db-status-text" class="break-words"><strong>Permanent Database Active:</strong> Stored on disk (<code>data/khodal_office.db</code>) — immune to browser history clears.</span>
-            </div>
-            <div class="flex items-center gap-3 shrink-0">
-                <button onclick="backupDatabase()" class="font-bold text-emerald-700 hover:text-emerald-900 underline flex items-center gap-1 cursor-pointer">
-                    <i data-lucide="download" class="w-3.5 h-3.5"></i> 1-Click Backup
-                </button>
-            </div>
-        </div>
-
-        <!-- 1. SERVICE TABS (Field Division) -->
-        <div class="bg-white rounded-xl border border-slate-200 shadow-xs p-1.5 flex items-center justify-between">
-            <div class="flex items-center gap-1 sm:gap-2 overflow-x-auto no-scrollbar py-0.5 w-full">
-                <!-- All Services -->
-                <button onclick="switchServiceTab('all')" id="tab-all" class="service-tab-btn active px-3 sm:px-3.5 py-2 rounded-lg text-xs font-bold transition flex items-center gap-1.5 sm:gap-2 bg-brand-600 text-white shadow-2xs shrink-0 whitespace-nowrap cursor-pointer">
-                    <i data-lucide="layout-grid" class="w-4 h-4"></i>
-                    <span>All Services</span>
-                    <span id="tab-badge-all" class="px-1.5 py-0.2 rounded-full text-[10px] bg-white/20 text-white font-mono">0</span>
-                </button>
-
-                <!-- Service 1: UC Aadhaar -->
-                <button onclick="switchServiceTab('ucaadhar')" id="tab-ucaadhar" class="service-tab-btn px-3 sm:px-3.5 py-2 rounded-lg text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap cursor-pointer">
-                    <span class="w-2 h-2 rounded-full bg-blue-500"></span>
-                    <span>🪪 UC Aadhaar (SID)</span>
-                    <span id="tab-badge-ucaadhar" class="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-200 text-slate-700 font-mono">0</span>
-                </button>
-
-                <!-- Service 2: Aadhaar Online -->
-                <button onclick="switchServiceTab('aadhar_online')" id="tab-aadhar_online" class="service-tab-btn px-3 sm:px-3.5 py-2 rounded-lg text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap cursor-pointer">
-                    <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
-                    <span>🌐 Aadhaar Online (SRN)</span>
-                    <span id="tab-badge-aadhar_online" class="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-200 text-slate-700 font-mono">0</span>
-                </button>
-
-                <!-- Service 3: PAN Card -->
-                <button onclick="switchServiceTab('pancard')" id="tab-pancard" class="service-tab-btn px-3 sm:px-3.5 py-2 rounded-lg text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap cursor-pointer">
-                    <span class="w-2 h-2 rounded-full bg-amber-500"></span>
-                    <span>💳 PAN Card</span>
-                    <span id="tab-badge-pancard" class="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-200 text-slate-700 font-mono">0</span>
-                </button>
-
-                <!-- Service 4: Ayushman Card -->
-                <button onclick="switchServiceTab('aayushman')" id="tab-aayushman" class="service-tab-btn px-3 sm:px-3.5 py-2 rounded-lg text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap cursor-pointer">
-                    <span class="w-2 h-2 rounded-full bg-purple-500"></span>
-                    <span>🏥 Ayushman Card</span>
-                    <span id="tab-badge-aayushman" class="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-200 text-slate-700 font-mono">0</span>
-                </button>
-            </div>
-
-            <!-- Export Buttons on Right -->
-            <div class="hidden lg:flex items-center gap-2 pl-4 border-l border-slate-200 shrink-0">
-                <button onclick="exportCurrentView('excel')" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition whitespace-nowrap cursor-pointer" title="Export current filtered view to Excel">
-                    <i data-lucide="download" class="w-3.5 h-3.5"></i>
-                    <span>Export Excel</span>
-                </button>
-                <button onclick="exportCurrentView('csv')" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-lg transition whitespace-nowrap cursor-pointer" title="Export to CSV">
-                    <i data-lucide="file-text" class="w-3.5 h-3.5"></i>
-                    <span>CSV</span>
-                </button>
-            </div>
-        </div>
-
-        <!-- 2. DAILY PROGRESS & STATUS TRACKER BAR -->
-        <div class="bg-white rounded-xl border border-slate-200 shadow-xs p-4 sm:p-5 space-y-4">
-            <!-- Header with Date Selector -->
-            <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-                <div class="flex items-center gap-2.5">
-                    <div class="p-2 bg-indigo-50 text-indigo-700 rounded-lg shrink-0">
-                        <i data-lucide="calendar-check-2" class="w-5 h-5"></i>
-                    </div>
-                    <div>
-                        <h2 class="text-sm font-bold text-slate-900">Daily Work Progress & Overview</h2>
-                        <p class="text-xs text-slate-500">Select any date to check daily progress, completed tasks, and pending dues</p>
-                    </div>
-                </div>
-
-                <!-- Date Input, Quick Selector & Fast Date Actions -->
-                <div class="flex flex-wrap items-center gap-2 w-full md:w-auto">
-                    <!-- Write / Pick Custom Date Input -->
-                    <div class="relative flex items-center flex-1 sm:flex-initial">
-                        <span class="text-xs font-bold text-slate-600 mr-1.5 hidden sm:inline">Date:</span>
-                        <input type="date" id="showcase-date-input" onchange="onCustomDateFilterChange(this.value)"
-                            class="w-full sm:w-auto text-xs font-semibold bg-slate-50 hover:bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-slate-800 outline-hidden focus:ring-2 focus:ring-brand-500 cursor-pointer shadow-2xs"
-                            title="Write or pick any appropriate date to showcase">
-                    </div>
-
-                    <!-- Available Dates Dropdown -->
-                    <div class="relative flex-1 sm:flex-initial">
-                        <select id="quick-date-selector" onchange="onDateSelectorChange(this.value)"
-                            class="w-full sm:w-auto text-xs font-semibold bg-slate-50 hover:bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-slate-700 outline-hidden focus:ring-2 focus:ring-brand-500 max-w-full sm:max-w-[175px] cursor-pointer"
-                            title="Quick select from available record dates">
-                            <option value="">All Dates (Overview)</option>
-                        </select>
-                    </div>
-
-                    <!-- Jump to Latest Date in Work Records -->
-                    <button onclick="selectLatestDate()" class="flex-1 sm:flex-initial justify-center px-2.5 py-1.5 text-xs font-semibold bg-brand-50 text-brand-700 hover:bg-brand-100 border border-brand-200 rounded-lg transition inline-flex items-center gap-1 shadow-2xs whitespace-nowrap cursor-pointer" title="Show latest record date from your uploaded data">
-                        <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
-                        <span>Latest Date</span>
-                    </button>
-
-                    <!-- Today's Date -->
-                    <button onclick="setTodayDate()" class="flex-1 sm:flex-initial justify-center px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 border border-slate-200 rounded-lg transition whitespace-nowrap cursor-pointer" title="Filter by today's date">
-                        Today
-                    </button>
-
-                    <!-- All Dates (Reset) -->
-                    <button onclick="resetDateFilter()" class="flex-1 sm:flex-initial justify-center px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 border border-slate-200 rounded-lg transition inline-flex items-center gap-1 whitespace-nowrap cursor-pointer" title="View all records (all dates)">
-                        <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
-                        <span>All</span>
-                    </button>
-                </div>
-            </div>
-
-            <!-- Progress Metric Cards Grid -->
-            <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 sm:gap-3">
-                <!-- Total Applications -->
-                <div class="p-3 sm:p-3.5 rounded-xl bg-slate-50 border border-slate-200">
-                    <p class="text-[11px] sm:text-xs font-semibold text-slate-500 truncate">Total Applications</p>
-                    <div class="flex items-baseline gap-1.5 mt-1">
-                        <h3 id="stat-progress-total" class="text-xl sm:text-2xl font-black text-slate-900 truncate">0</h3>
-                        <span id="stat-progress-date-pill" class="text-[10px] sm:text-[11px] font-mono font-medium text-slate-400">All</span>
-                    </div>
-                </div>
-
-                <!-- Completed -->
-                <div class="p-3 sm:p-3.5 rounded-xl bg-emerald-50/70 border border-emerald-200 cursor-pointer hover:bg-emerald-100/60 transition" onclick="filterByStatusQuick('Completed')" title="Click to view only Completed">
-                    <div class="flex items-center justify-between">
-                        <p class="text-[11px] sm:text-xs font-semibold text-emerald-800 truncate">Completed</p>
-                        <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-600 shrink-0"></i>
-                    </div>
-                    <div class="flex items-baseline gap-1.5 mt-1">
-                        <h3 id="stat-progress-completed" class="text-xl sm:text-2xl font-black text-emerald-900 truncate">0</h3>
-                        <span id="stat-progress-rate" class="text-[10px] sm:text-xs font-bold text-emerald-700 px-1.5 py-0.5 rounded-md bg-emerald-200/60 font-mono">0%</span>
-                    </div>
-                </div>
-
-                <!-- In-Process -->
-                <div class="p-3 sm:p-3.5 rounded-xl bg-amber-50/70 border border-amber-200 cursor-pointer hover:bg-amber-100/60 transition" onclick="filterByStatusQuick('InProgress')" title="Click to view only In-Progress">
-                    <div class="flex items-center justify-between">
-                        <p class="text-[11px] sm:text-xs font-semibold text-amber-800 truncate">In-Process</p>
-                        <i data-lucide="clock-3" class="w-4 h-4 text-amber-600 shrink-0"></i>
-                    </div>
-                    <div class="flex items-baseline gap-1.5 mt-1">
-                        <h3 id="stat-progress-inprocess" class="text-xl sm:text-2xl font-black text-amber-900 truncate">0</h3>
-                        <span class="text-[10px] sm:text-[11px] text-amber-700">active</span>
-                    </div>
-                </div>
-
-                <!-- Rejected -->
-                <div class="p-3 sm:p-3.5 rounded-xl bg-rose-50/70 border border-rose-200 cursor-pointer hover:bg-rose-100/60 transition" onclick="filterByStatusQuick('Rejected')" title="Click to view only Rejected">
-                    <div class="flex items-center justify-between">
-                        <p class="text-[11px] sm:text-xs font-semibold text-rose-800 truncate">Rejected</p>
-                        <i data-lucide="x-circle" class="w-4 h-4 text-rose-600 shrink-0"></i>
-                    </div>
-                    <div class="flex items-baseline gap-1.5 mt-1">
-                        <h3 id="stat-progress-rejected" class="text-xl sm:text-2xl font-black text-rose-900 truncate">0</h3>
-                        <span id="stat-progress-reject-rate" class="text-[10px] sm:text-[11px] font-bold text-rose-700 px-1.5 py-0.5 rounded-md bg-rose-200/60 font-mono">0%</span>
-                    </div>
-                </div>
-
-                <!-- Baki / Action Required -->
-                <div class="p-3 sm:p-3.5 rounded-xl bg-purple-50/70 border border-purple-200 cursor-pointer hover:bg-purple-100/60 transition" onclick="toggleBakiFilter()" title="Click to filter BAKI & NOT RECEIVED cases">
-                    <div class="flex items-center justify-between">
-                        <p class="text-[11px] sm:text-xs font-semibold text-purple-800 truncate">Baki / Dues</p>
-                        <i data-lucide="alert-triangle" class="w-4 h-4 text-purple-600 shrink-0"></i>
-                    </div>
-                    <div class="flex items-baseline gap-1.5 mt-1">
-                        <h3 id="stat-progress-baki" class="text-xl sm:text-2xl font-black text-purple-900 truncate">0</h3>
-                        <span id="baki-active-badge" class="text-[10px] sm:text-[11px] font-bold text-purple-700 px-1.5 py-0.5 rounded-md bg-purple-200/60">pending</span>
-                    </div>
-                </div>
-
-                <!-- Fees Collected -->
-                <div class="p-3 sm:p-3.5 rounded-xl bg-indigo-50/70 border border-indigo-200">
-                    <div class="flex items-center justify-between">
-                        <p class="text-[11px] sm:text-xs font-semibold text-indigo-800 truncate">Fees / Total</p>
-                        <i data-lucide="banknote" class="w-4 h-4 text-indigo-600 shrink-0"></i>
-                    </div>
-                    <div class="flex items-baseline gap-1 mt-1">
-                        <span class="text-sm sm:text-base font-bold text-indigo-700">₹</span>
-                        <h3 id="stat-progress-fees" class="text-xl sm:text-2xl font-black text-indigo-950 truncate">0</h3>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- 3. SEARCH & FILTER CONTROLS -->
-        <div class="bg-white rounded-xl border border-slate-200 shadow-xs p-4 sm:p-5 space-y-4">
-            <div class="flex items-center justify-between pb-3 border-b border-slate-100">
-                <div class="flex items-center gap-2">
-                    <i data-lucide="search" class="w-4 h-4 text-brand-600"></i>
-                    <h2 class="text-xs font-bold text-slate-800 uppercase tracking-wider">Instant Multi-Field Search</h2>
-                </div>
-                <div class="flex items-center gap-2">
-                    <button onclick="resetAllFilters()" class="text-xs font-medium text-slate-500 hover:text-slate-800 px-2.5 py-1 rounded hover:bg-slate-100 transition inline-flex items-center gap-1 cursor-pointer">
-                        <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i> Clear Search
-                    </button>
-                </div>
-            </div>
-
-            <!-- Search Inputs Row -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-                <!-- Search by Date -->
-                <div>
-                    <label class="block text-xs font-bold text-slate-700 mb-1">Search / Filter by Date</label>
-                    <div class="relative">
-                        <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                            <i data-lucide="calendar" class="w-4 h-4"></i>
-                        </span>
-                        <input type="date" id="search-date"
-                            class="w-full pl-9 pr-8 py-2 text-xs sm:text-sm bg-slate-50 focus:bg-white border border-slate-200 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 rounded-lg transition outline-hidden cursor-pointer"
-                            onchange="onSearchDateChange(this.value)"
-                            title="Filter records by date">
-                        <button id="clear-search-date" onclick="clearSearchDate()" class="hidden absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer">
-                            <i data-lucide="x" class="w-3.5 h-3.5"></i>
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Search by Name -->
-                <div>
-                    <label class="block text-xs font-bold text-slate-700 mb-1">Search by Name</label>
-                    <div class="relative">
-                        <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                            <i data-lucide="user" class="w-4 h-4"></i>
-                        </span>
-                        <input type="text" id="search-name" placeholder="e.g. Khunt, Patel, Jadwani..."
-                            class="w-full pl-9 pr-8 py-2 text-xs sm:text-sm bg-slate-50 focus:bg-white border border-slate-200 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 rounded-lg transition outline-hidden"
-                            oninput="triggerSearchDebounced()">
-                        <button id="clear-name" onclick="clearInput('search-name')" class="hidden absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer">
-                            <i data-lucide="x" class="w-3.5 h-3.5"></i>
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Search by Mobile Number -->
-                <div>
-                    <label class="block text-xs font-bold text-slate-700 mb-1">Search by Mobile Number</label>
-                    <div class="relative">
-                        <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                            <i data-lucide="phone" class="w-4 h-4"></i>
-                        </span>
-                        <input type="text" id="search-mobile" placeholder="e.g. 81283, 9328318876..."
-                            class="w-full pl-9 pr-8 py-2 text-xs sm:text-sm bg-slate-50 focus:bg-white border border-slate-200 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 rounded-lg transition outline-hidden"
-                            oninput="triggerSearchDebounced()">
-                        <button id="clear-mobile" onclick="clearInput('search-mobile')" class="hidden absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer">
-                            <i data-lucide="x" class="w-3.5 h-3.5"></i>
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Search by ID (SID / SRN / Card No) -->
-                <div>
-                    <label class="block text-xs font-bold text-slate-700 mb-1">Search SID / SRN / Card No</label>
-                    <div class="relative">
-                        <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                            <i data-lucide="hash" class="w-4 h-4"></i>
-                        </span>
-                        <input type="text" id="search-id" placeholder="e.g. S131114, S14879, PAJY..."
-                            class="w-full pl-9 pr-8 py-2 text-xs sm:text-sm bg-slate-50 focus:bg-white border border-slate-200 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 rounded-lg transition outline-hidden font-mono"
-                            oninput="triggerSearchDebounced()">
-                        <button id="clear-id" onclick="clearInput('search-id')" class="hidden absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer">
-                            <i data-lucide="x" class="w-3.5 h-3.5"></i>
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Status Filter Dropdown -->
-                <div>
-                    <label class="block text-xs font-bold text-slate-700 mb-1">Filter by Status / Progress</label>
-                    <div class="relative">
-                        <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                            <i data-lucide="filter" class="w-4 h-4"></i>
-                        </span>
-                        <select id="filter-status" onchange="triggerSearchDebounced()"
-                            class="w-full pl-9 pr-3 py-2 text-xs sm:text-sm bg-slate-50 focus:bg-white border border-slate-200 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 rounded-lg transition outline-hidden appearance-none cursor-pointer">
-                            <option value="all">All Progress Statuses</option>
-                            <option value="completed">Completed Only</option>
-                            <option value="inprogress">InProgress Only</option>
-                            <option value="rejected">Rejected Only</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- 4. DATA RECORDS TABLE CONTAINER -->
-        <div class="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
-            <!-- Table Header Strip -->
-            <div class="px-4 sm:px-5 py-3 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2 bg-slate-50/70">
-                <div class="flex items-center gap-2">
-                    <span id="active-service-title" class="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                        All Office Records
-                    </span>
-                    <span id="badge-total-records" class="px-2 py-0.5 text-xs font-semibold rounded-full bg-brand-100 text-brand-800 font-mono">
-                        0 records
-                    </span>
-                </div>
-
-                <!-- Rows per page selector & Mobile Quick Exports -->
-                <div class="flex items-center gap-3 text-xs text-slate-500">
-                    <div class="flex lg:hidden items-center gap-1.5">
-                        <button onclick="exportCurrentView('excel')" class="px-2 py-1 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 font-semibold text-[11px] inline-flex items-center gap-1 transition cursor-pointer" title="Export Excel">
-                            <i data-lucide="download" class="w-3 h-3"></i> Excel
-                        </button>
-                    </div>
-                    <div class="flex items-center gap-1.5">
-                        <span>Rows:</span>
-                        <select id="select-page-size" onchange="changePageSize(this.value)" class="border border-slate-200 rounded px-2 py-1 bg-white text-slate-700 outline-hidden focus:border-brand-500 cursor-pointer">
-                            <option value="25" selected>25</option>
-                            <option value="50">50</option>
-                            <option value="100">100</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Active Date / Filter Hint Banner -->
-            <div id="table-filter-hint" class="hidden px-4 sm:px-5 py-2.5 bg-brand-50/80 border-b border-brand-100 text-xs font-semibold text-brand-900 flex flex-wrap items-center justify-between gap-2">
-                <div class="flex items-center gap-2">
-                    <i data-lucide="calendar" class="w-4 h-4 text-brand-600 shrink-0"></i>
-                    <span>Filtering by Date: <strong id="active-date-display" class="font-bold text-brand-950 font-mono"></strong></span>
-                    <span id="cross-date-match-hint" class="ml-2 text-brand-700 font-normal"></span>
-                </div>
-                <button onclick="resetDateFilter()" class="underline text-brand-700 hover:text-brand-900 font-bold text-xs inline-flex items-center gap-1 cursor-pointer">
-                    <i data-lucide="rotate-ccw" class="w-3 h-3"></i> Show All Dates
-                </button>
-            </div>
-
-            <!-- Table Dynamic Content with Horizontal Scroll and Sticky Headers -->
-            <div class="table-responsive-container min-h-[350px]">
-                <table class="w-full text-left text-sm text-slate-600">
-                    <thead id="records-table-head" class="bg-slate-50 text-xs font-semibold text-slate-600 uppercase tracking-wider border-b border-slate-200">
-                        <!-- Injected by JS based on current service type tab -->
-                    </thead>
-                    <tbody id="records-table-body" class="divide-y divide-slate-100 font-sans">
-                        <!-- Dynamic Records Injected -->
-                    </tbody>
-                </table>
-
-                <!-- Loading Spinner -->
-                <div id="table-loading-spinner" class="hidden absolute inset-0 bg-white/70 backdrop-blur-2xs flex items-center justify-center">
-                    <div class="flex flex-col items-center gap-2">
-                        <div class="w-8 h-8 border-3 border-brand-600 border-t-transparent rounded-full animate-spin"></div>
-                        <span class="text-xs font-medium text-slate-600">Loading records...</span>
-                    </div>
-                </div>
-
-                <!-- Empty State -->
-                <div id="table-empty-state" class="hidden py-16 px-4 text-center">
-                    <div class="w-16 h-16 bg-slate-100 text-slate-400 rounded-full flex items-center justify-center mx-auto mb-3">
-                        <i data-lucide="file-question" class="w-8 h-8"></i>
-                    </div>
-                    <h3 id="empty-state-title" class="text-base font-semibold text-slate-800">No Records Found</h3>
-                    <p id="empty-state-desc" class="text-xs text-slate-500 max-w-sm mx-auto mt-1">
-                        Try clearing search terms or selecting "All Dates".
-                    </p>
-                    <button id="empty-state-btn" onclick="resetAllFilters()" class="mt-4 px-4 py-2 text-xs font-semibold text-brand-700 bg-brand-50 hover:bg-brand-100 border border-brand-200 rounded-lg transition inline-flex items-center gap-1.5 cursor-pointer">
-                        Reset Filters
-                    </button>
-                </div>
-            </div>
-
-            <!-- Table Pagination Bar -->
-            <div class="px-4 sm:px-5 py-3 border-t border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-600">
-                <div class="text-center sm:text-left">
-                    Showing <span id="page-start-idx" class="font-semibold text-slate-800">0</span> to 
-                    <span id="page-end-idx" class="font-semibold text-slate-800">0</span> of 
-                    <span id="page-total-items" class="font-semibold text-slate-800">0</span> records
-                </div>
-                <div class="flex items-center gap-1.5">
-                    <button id="btn-prev-page" onclick="goToPage(currentPage - 1)" class="px-3 py-1.5 min-h-[36px] rounded-lg border border-slate-300 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed font-medium transition inline-flex items-center gap-1 shadow-2xs cursor-pointer">
-                        <i data-lucide="chevron-left" class="w-3.5 h-3.5"></i> Prev
-                    </button>
-                    <span class="px-3 py-1 font-semibold text-slate-800 whitespace-nowrap">
-                        Page <span id="current-page-num">1</span> of <span id="total-pages-num">1</span>
-                    </span>
-                    <button id="btn-next-page" onclick="goToPage(currentPage + 1)" class="px-3 py-1.5 min-h-[36px] rounded-lg border border-slate-300 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed font-medium transition inline-flex items-center gap-1 shadow-2xs cursor-pointer">
-                        Next <i data-lucide="chevron-right" class="w-3.5 h-3.5"></i>
-                    </button>
-                </div>
-            </div>
-        </div>
-
-    </main>
-
-    <!-- FOOTER -->
-    <footer class="bg-white border-t border-slate-200 py-4 mt-8">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500">
-            <div>
-                <strong>Khodal Office Data Hub</strong> &mdash; UC Aadhaar, Aadhaar Online, PAN Card, Ayushman Card
-            </div>
-            <div>
-                Local SQLite Database • Ready for Daily Office Excel & CSV Imports
-            </div>
-        </div>
-    </footer>
-
-    <!-- ========================================================================= -->
-    <!-- MODAL 1: DAILY EXCEL / CSV UPLOAD -->
-    <!-- ========================================================================= -->
-    <div id="modal-upload" class="hidden fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
-        <div class="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-lg w-full responsive-modal-box flex flex-col overflow-hidden">
-            <div class="px-4 sm:px-6 py-3.5 sm:py-4 border-b border-slate-100 flex items-center justify-between shrink-0">
-                <div class="flex items-center gap-2">
-                    <div class="p-2 bg-brand-50 text-brand-600 rounded-lg">
-                        <i data-lucide="upload-cloud" class="w-5 h-5"></i>
-                    </div>
-                    <div>
-                        <h3 class="text-base font-bold text-slate-900">Upload Daily Excel / CSV</h3>
-                        <p class="text-xs text-slate-500">Import records for any of the 4 office services</p>
-                    </div>
-                </div>
-                <button onclick="closeModal('modal-upload')" class="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer">
-                    <i data-lucide="x" class="w-5 h-5"></i>
-                </button>
-            </div>
-
-            <div class="p-4 sm:p-6 space-y-4 overflow-y-auto flex-1">
-                <!-- Safe Place Server Status Notice -->
-                <div id="upload-mode-notice" class="hidden"></div>
-
-                <!-- Select Service Category -->
-                <div>
-                    <label class="block text-xs font-bold text-slate-700 mb-1">Select Service Category</label>
-                    <select id="upload-service-select" class="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:ring-2 focus:ring-brand-500 outline-hidden cursor-pointer">
-                        <option value="auto">✨ Automatic Detection (SID ➔ UC Aadhaar, SRN ➔ Aadhaar Online)</option>
-                        <option value="ucaadhar">🪪 UC Aadhaar (SID Number)</option>
-                        <option value="aadhar_online">🌐 Aadhaar Online (SRN Number)</option>
-                        <option value="pancard">💳 PAN Card (New / Update PAN)</option>
-                        <option value="aayushman">🏥 Ayushman Card (Ration Card No)</option>
-                    </select>
-                </div>
-
-                <!-- Download Official Excel Templates Section -->
-                <div class="p-3 bg-blue-50/80 border border-blue-200 rounded-xl space-y-2">
-                    <div class="flex flex-wrap items-center justify-between gap-1.5">
-                        <span class="text-xs font-bold text-blue-950 flex items-center gap-1.5">
-                            <i data-lucide="file-spreadsheet" class="w-4 h-4 text-blue-600"></i>
-                            Download Standard Excel Formats:
-                        </span>
-                        <a href="templates/Khodal_Office_Master_Template.xlsx" download="Khodal_Office_Master_Template.xlsx" class="text-[11px] font-bold text-white bg-blue-600 hover:bg-blue-700 px-2.5 py-1 rounded-md transition shadow-2xs flex items-center gap-1 whitespace-nowrap">
-                            <i data-lucide="download" class="w-3 h-3"></i>
-                            Master (All 4 Services)
-                        </a>
-                    </div>
-                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-[11px]">
-                        <a href="templates/Template_1_UC_Aadhaar.xlsx" download="Template_1_UC_Aadhaar.xlsx" class="text-center py-1.5 px-1 bg-white hover:bg-blue-100 text-blue-800 border border-blue-200 rounded-lg transition font-medium">
-                            🪪 UC Aadhaar
-                        </a>
-                        <a href="templates/Template_2_Aadhaar_Online.xlsx" download="Template_2_Aadhaar_Online.xlsx" class="text-center py-1.5 px-1 bg-white hover:bg-blue-100 text-blue-800 border border-blue-200 rounded-lg transition font-medium">
-                            🌐 Aadhaar Online
-                        </a>
-                        <a href="templates/Template_3_PAN_Card.xlsx" download="Template_3_PAN_Card.xlsx" class="text-center py-1.5 px-1 bg-white hover:bg-blue-100 text-blue-800 border border-blue-200 rounded-lg transition font-medium">
-                            💳 PAN Card
-                        </a>
-                        <a href="templates/Template_4_Ayushman_Card.xlsx" download="Template_4_Ayushman_Card.xlsx" class="text-center py-1.5 px-1 bg-white hover:bg-blue-100 text-blue-800 border border-blue-200 rounded-lg transition font-medium">
-                            🏥 Ayushman
-                        </a>
-                    </div>
-                </div>
-
-                <!-- Dropzone Area -->
-                <div id="dropzone"
-                     class="border-2 border-dashed border-slate-300 hover:border-brand-500 rounded-xl p-5 sm:p-8 text-center bg-slate-50 hover:bg-brand-50/30 transition cursor-pointer"
-                     onclick="document.getElementById('file-input').click()">
-                    <input type="file" id="file-input" class="hidden" accept=".xlsx, .xls, .csv" onchange="handleFileSelect(event)">
-                    <div class="w-12 h-12 rounded-full bg-brand-100 text-brand-600 flex items-center justify-center mx-auto mb-3">
-                        <i data-lucide="file-up" class="w-6 h-6"></i>
-                    </div>
-                    <h4 class="text-sm font-semibold text-slate-800">Click or Drag & Drop Excel / CSV</h4>
-                    <p class="text-xs text-slate-500 mt-1">Supports date divider rows (e.g. 01-10-2026 / 2026-10-01) automatically</p>
-                    <span id="selected-file-name" class="inline-block mt-3 px-3 py-1 bg-white border border-slate-200 rounded-full text-xs font-mono font-medium text-slate-700 hidden"></span>
-                </div>
-
-                <!-- Progress Bar -->
-                <div id="upload-progress-container" class="hidden space-y-2">
-                    <div class="flex justify-between text-xs font-semibold text-slate-700">
-                        <span>Importing & Indexing records...</span>
-                        <span class="animate-pulse">Please wait</span>
-                    </div>
-                    <div class="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
-                        <div class="bg-brand-600 h-2 rounded-full animate-pulse" style="width: 100%"></div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="px-4 sm:px-6 py-3.5 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-3 shrink-0">
-                <button onclick="closeModal('modal-upload')" class="px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-200 rounded-lg transition cursor-pointer">
-                    Cancel
-                </button>
-                <button id="btn-submit-upload" onclick="submitFileUpload()" disabled class="px-5 py-2 text-xs font-semibold text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg shadow-sm transition inline-flex items-center gap-1.5 cursor-pointer">
-                    <i data-lucide="check" class="w-4 h-4"></i>
-                    <span>Start Import</span>
-                </button>
-            </div>
-        </div>
-    </div>
-
-    <!-- ========================================================================= -->
-    <!-- MODAL 2: ADD / EDIT ENTRY MODAL -->
-    <!-- ========================================================================= -->
-    <div id="modal-record-form" class="hidden fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
-        <div class="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-lg w-full responsive-modal-box flex flex-col overflow-hidden">
-            <div class="px-4 sm:px-6 py-3.5 sm:py-4 border-b border-slate-100 flex items-center justify-between shrink-0">
-                <div class="flex items-center gap-2">
-                    <div class="p-2 bg-brand-50 text-brand-600 rounded-lg">
-                        <i data-lucide="edit-3" class="w-5 h-5"></i>
-                    </div>
-                    <div>
-                        <h3 id="record-form-title" class="text-base font-bold text-slate-900">New Entry</h3>
-                        <p class="text-xs text-slate-500">Record an office transaction</p>
-                    </div>
-                </div>
-                <button onclick="closeModal('modal-record-form')" class="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer">
-                    <i data-lucide="x" class="w-5 h-5"></i>
-                </button>
-            </div>
-
-            <form id="record-form" onsubmit="handleRecordFormSubmit(event)" class="p-4 sm:p-6 space-y-3.5 overflow-y-auto flex-1">
-                <input type="hidden" id="form-record-id">
-
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                        <label class="block text-xs font-bold text-slate-700 mb-1">Service Type *</label>
-                        <select id="form-service-type" onchange="updateFormIdLabel(this.value)" required class="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-brand-500 outline-hidden cursor-pointer">
-                            <option value="ucaadhar">🪪 UC Aadhaar (SID Number)</option>
-                            <option value="aadhar_online">🌐 Aadhaar Online (SRN Number)</option>
-                            <option value="pancard">💳 PAN Card</option>
-                            <option value="aayushman">🏥 Ayushman Card</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold text-slate-700 mb-1">Date *</label>
-                        <input type="date" id="form-date" required class="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-brand-500 outline-hidden cursor-pointer">
-                    </div>
-                </div>
-
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                        <label class="block text-xs font-bold text-slate-700 mb-1">Customer / Person Name *</label>
-                        <input type="text" id="form-name" required placeholder="Full Name"
-                            class="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-brand-500 outline-hidden">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold text-slate-700 mb-1">Mobile Number</label>
-                        <input type="text" id="form-mobile" placeholder="10-digit Mobile No"
-                            class="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-brand-500 outline-hidden">
-                    </div>
-                </div>
-
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                        <label id="form-id-label" class="block text-xs font-bold text-slate-700 mb-1">SID / SRN / Card No</label>
-                        <input type="text" id="form-id-number" oninput="handleFormIdInput(this.value)" placeholder="e.g. S131114... / PAJY..."
-                            class="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-brand-500 outline-hidden font-mono">
-                    </div>
-                    <div id="form-status-container">
-                        <label class="block text-xs font-bold text-slate-700 mb-1">Status (Aadhaar)</label>
-                        <select id="form-status" class="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-brand-500 outline-hidden cursor-pointer">
-                            <option value="Completed">Completed</option>
-                            <option value="InProgress">InProgress</option>
-                            <option value="Rejected">Rejected</option>
-                        </select>
-                    </div>
-                </div>
-
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                        <label class="block text-xs font-bold text-slate-700 mb-1">PAN Type (If PAN)</label>
-                        <input type="text" id="form-pan-type" placeholder="NEW PAN or PAN UPDATE"
-                            class="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-brand-500 outline-hidden">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold text-slate-700 mb-1">Fee / Total (₹)</label>
-                        <input type="number" step="any" id="form-fee" placeholder="e.g. 200, 100"
-                            class="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-brand-500 outline-hidden">
-                    </div>
-                </div>
-
-                <div>
-                    <label class="block text-xs font-bold text-slate-700 mb-1">Remark / Notes (e.g. HOF, 200 BAKI, SPEED)</label>
-                    <input type="text" id="form-remark" placeholder="Remarks or dues..."
-                        class="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-brand-500 outline-hidden">
-                </div>
-
-                <div class="pt-3 border-t border-slate-100 flex items-center justify-end gap-3 shrink-0">
-                    <button type="button" onclick="closeModal('modal-record-form')" class="px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 rounded-lg transition cursor-pointer">
-                        Cancel
-                    </button>
-                    <button type="submit" class="px-5 py-2 text-xs font-semibold text-white bg-brand-600 hover:bg-brand-700 rounded-lg shadow-sm transition cursor-pointer">
-                        Save Entry
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- ========================================================================= -->
-    <!-- MODAL 3: VIEW RECORD DETAILS -->
-    <!-- ========================================================================= -->
-    <div id="modal-view-record" class="hidden fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
-        <div class="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-lg w-full responsive-modal-box flex flex-col overflow-hidden">
-            <div class="px-4 sm:px-6 py-3.5 sm:py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/70 shrink-0">
-                <div class="flex items-center gap-3">
-                    <div id="view-avatar" class="w-10 h-10 rounded-xl bg-brand-600 text-white font-bold text-base flex items-center justify-center shadow-xs shrink-0">
-                        K
-                    </div>
-                    <div>
-                        <h3 id="view-name" class="text-base font-bold text-slate-900">Name</h3>
-                        <span id="view-service-badge" class="text-xs px-2 py-0.5 rounded-full font-semibold uppercase bg-slate-100 text-slate-700">SERVICE</span>
-                    </div>
-                </div>
-                <button onclick="closeModal('modal-view-record')" class="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer">
-                    <i data-lucide="x" class="w-5 h-5"></i>
-                </button>
-            </div>
-
-            <div class="p-4 sm:p-6 space-y-4 overflow-y-auto flex-1">
-                <!-- WhatsApp & Call -->
-                <div class="grid grid-cols-3 gap-2">
-                    <a id="btn-view-whatsapp" target="_blank" href="#" class="flex flex-col items-center justify-center py-2 px-3 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl text-emerald-800 transition">
-                        <i data-lucide="message-circle" class="w-5 h-5 text-emerald-600 mb-1"></i>
-                        <span class="text-xs font-semibold">WhatsApp</span>
-                    </a>
-                    <a id="btn-view-call" href="#" class="flex flex-col items-center justify-center py-2 px-3 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl text-indigo-800 transition">
-                        <i data-lucide="phone-call" class="w-5 h-5 text-indigo-600 mb-1"></i>
-                        <span class="text-xs font-semibold">Call</span>
-                    </a>
-                    <button onclick="copyCurrentViewCard()" class="flex flex-col items-center justify-center py-2 px-3 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-xl text-slate-800 transition cursor-pointer">
-                        <i data-lucide="copy" class="w-5 h-5 text-slate-600 mb-1"></i>
-                        <span class="text-xs font-semibold">Copy Card</span>
-                    </button>
-                </div>
-
-                <!-- Fields -->
-                <div class="bg-slate-50 rounded-xl p-4 border border-slate-200 space-y-2 text-xs">
-                    <div class="flex justify-between items-center py-1 border-b border-slate-200">
-                        <span class="text-slate-500 font-medium">Date:</span>
-                        <span id="view-date" class="font-bold text-slate-900 font-mono">-</span>
-                    </div>
-                    <div class="flex justify-between items-center py-1 border-b border-slate-200">
-                        <span class="text-slate-500 font-medium">SID / SRN / Card No:</span>
-                        <span id="view-id-num" class="font-bold text-brand-700 font-mono select-all">-</span>
-                    </div>
-                    <div class="flex justify-between items-center py-1 border-b border-slate-200">
-                        <span class="text-slate-500 font-medium">Mobile Number:</span>
-                        <span id="view-mobile" class="font-bold text-slate-900 font-mono">-</span>
-                    </div>
-                    <div id="view-row-status" class="flex justify-between items-center py-1 border-b border-slate-200">
-                        <span class="text-slate-500 font-medium">Progress Status:</span>
-                        <span id="view-status" class="font-semibold text-slate-800">-</span>
-                    </div>
-                    <div id="view-row-fee" class="flex justify-between items-center py-1 border-b border-slate-200">
-                        <span class="text-slate-500 font-medium">Fee / Total Amt:</span>
-                        <span id="view-fee" class="font-bold text-emerald-700">-</span>
-                    </div>
-                    <div class="flex justify-between items-center py-1">
-                        <span class="text-slate-500 font-medium">Remark / Notes:</span>
-                        <span id="view-remark" class="font-medium text-slate-900">-</span>
-                    </div>
-                </div>
-            </div>
-
-            <div class="px-4 sm:px-6 py-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-xs shrink-0">
-                <span class="text-slate-500 font-mono">Record #<span id="view-record-id"></span></span>
-                <button onclick="closeModal('modal-view-record')" class="px-4 py-2 font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 transition cursor-pointer">
-                    Close
-                </button>
-            </div>
-        </div>
-    </div>
-
-    <!-- ========================================================================= -->
-    <!-- MODAL 4: FILES MANAGEMENT MODAL -->
-    <!-- ========================================================================= -->
-    <div id="modal-files" class="hidden fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
-        <div class="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-2xl w-full responsive-modal-box flex flex-col overflow-hidden">
-            <div class="px-4 sm:px-6 py-3.5 sm:py-4 border-b border-slate-100 flex items-center justify-between shrink-0">
-                <div class="flex items-center gap-2">
-                    <div class="p-2 bg-emerald-50 text-emerald-600 rounded-lg">
-                        <i data-lucide="folder-spreadsheet" class="w-5 h-5"></i>
-                    </div>
-                    <div>
-                        <h3 class="text-base font-bold text-slate-900">Uploaded Office Files</h3>
-                        <p class="text-xs text-slate-500">History of daily Excel and CSV uploads</p>
-                    </div>
-                </div>
-                <button onclick="closeModal('modal-files')" class="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer">
-                    <i data-lucide="x" class="w-5 h-5"></i>
-                </button>
-            </div>
-
-            <div class="p-4 sm:p-6 max-h-[60vh] overflow-y-auto flex-1">
-                <div id="files-list-container" class="space-y-3">
-                    <!-- Files dynamically injected -->
-                </div>
-            </div>
-
-            <div class="px-4 sm:px-6 py-3 bg-slate-50 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-xs shrink-0">
-                <button onclick="openUploadModal(); closeModal('modal-files');" class="font-semibold text-brand-600 hover:text-brand-800 inline-flex items-center gap-1 cursor-pointer">
-                    <i data-lucide="plus" class="w-4 h-4"></i> Upload New File
-                </button>
-                <div class="flex items-center gap-2">
-                    <button onclick="clearAllRecordsData()" class="px-3 py-1.5 font-semibold text-rose-600 bg-rose-50 border border-rose-200 rounded-lg hover:bg-rose-100 transition inline-flex items-center gap-1 cursor-pointer">
-                        <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Clear All Data
-                    </button>
-                    <button onclick="closeModal('modal-files')" class="px-4 py-2 font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 transition cursor-pointer">
-                        Done
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- MASTER USERS MANAGEMENT MODAL (Stored directly in SQLite Database) -->
-    <div id="modal-master-users" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 hidden">
-        <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full responsive-modal-box flex flex-col border border-slate-200 overflow-hidden">
-            <!-- Modal Header -->
-            <div class="px-4 sm:px-6 py-3.5 sm:py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50 shrink-0">
-                <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center shadow-xs shrink-0">
-                        <i data-lucide="shield-check" class="w-5 h-5"></i>
-                    </div>
-                    <div>
-                        <h3 class="text-base font-bold text-slate-800">Master Users Management</h3>
-                        <p class="text-xs text-slate-500">Stored permanently in database (<span class="font-mono text-indigo-600 font-semibold">khodal_office.db</span>)</p>
-                    </div>
-                </div>
-                <button onclick="closeMasterUsersModal()" class="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-200 transition cursor-pointer">
-                    <i data-lucide="x" class="w-5 h-5"></i>
-                </button>
-            </div>
-
-            <!-- Modal Body (Scrollable) -->
-            <div class="p-4 sm:p-6 overflow-y-auto space-y-6 flex-1">
-                <!-- Active Master Users Table -->
-                <div>
-                    <div class="flex items-center justify-between mb-3">
-                        <h4 class="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
-                            <i data-lucide="users" class="w-4 h-4 text-indigo-600"></i>
-                            Active Master Users in Database
-                        </h4>
-                        <span id="master-users-count-badge" class="px-2 py-0.5 bg-indigo-100 text-indigo-800 text-[11px] font-semibold rounded-full">
-                            Loading...
-                        </span>
-                    </div>
-
-                    <div class="border border-slate-200 rounded-xl overflow-x-auto shadow-2xs">
-                        <table class="w-full text-left text-xs text-slate-700 divide-y divide-slate-200 min-w-[480px]">
-                            <thead class="bg-slate-50 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
-                                <tr>
-                                    <th class="px-4 py-2.5">User</th>
-                                    <th class="px-4 py-2.5">Username</th>
-                                    <th class="px-4 py-2.5">Role</th>
-                                    <th class="px-4 py-2.5">Last Login</th>
-                                    <th class="px-4 py-2.5 text-right">Action</th>
-                                </tr>
-                            </thead>
-                            <tbody id="master-users-list-tbody" class="divide-y divide-slate-100 bg-white">
-                                <tr>
-                                    <td colspan="5" class="px-4 py-6 text-center text-slate-400">Loading master users...</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <!-- Add Master User Form Card -->
-                <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 sm:p-5">
-                    <h4 class="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5 mb-3">
-                        <i data-lucide="user-plus" class="w-4 h-4 text-brand-600"></i>
-                        Add New Master User to Database
-                    </h4>
-
-                    <form id="add-master-user-form" onsubmit="handleAddMasterUser(event)" class="space-y-4">
-                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                            <div>
-                                <label class="block text-xs font-semibold text-slate-700 mb-1">Full Name</label>
-                                <input type="text" id="new-user-fullname" required placeholder="e.g. Master Admin"
-                                    class="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-hidden bg-white">
-                            </div>
-                            <div>
-                                <label class="block text-xs font-semibold text-slate-700 mb-1">Username (Login ID)</label>
-                                <input type="text" id="new-user-username" required placeholder="e.g. admin"
-                                    class="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-hidden font-mono bg-white">
-                            </div>
-                            <div>
-                                <label class="block text-xs font-semibold text-slate-700 mb-1">Password</label>
-                                <div class="relative">
-                                    <input type="password" id="new-user-password" required placeholder="e.g. admin@7575"
-                                        class="w-full pl-3 pr-8 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-hidden bg-white">
-                                    <button type="button" onclick="togglePasswordVisibility('new-user-password', 'eye-icon-newuser')" class="absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer">
-                                        <i data-lucide="eye" id="eye-icon-newuser" class="w-3.5 h-3.5"></i>
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
-                            <span class="text-[11px] text-slate-500 flex items-center gap-1.5">
-                                <i data-lucide="database" class="w-3.5 h-3.5 text-indigo-500 shrink-0"></i>
-                                Stored safely in SQLite database.
-                            </span>
-                            <button type="submit" id="add-user-submit-btn"
-                                class="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-xs font-semibold shadow-xs flex items-center justify-center gap-1.5 transition cursor-pointer">
-                                <i data-lucide="plus" class="w-3.5 h-3.5"></i>
-                                <span>Save User to Database</span>
-                            </button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-
-            <!-- Modal Footer -->
-            <div class="px-4 sm:px-6 py-3 bg-slate-100 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500 shrink-0">
-                <span class="flex items-center gap-1 font-mono text-[11px]">
-                    <i data-lucide="lock" class="w-3 h-3 text-slate-400"></i> SHA-256 salted hash + DB session token
-                </span>
-                <button onclick="closeMasterUsersModal()" class="px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg font-medium text-slate-700 transition cursor-pointer">
-                    Close
-                </button>
-            </div>
-        </div>
-    </div>
-
-    <!-- CLOUD DATABASE & SAFE PLACE SETTINGS MODAL -->
-    <div id="modal-cloud-db" class="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 hidden">
-        <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full responsive-modal-box flex flex-col overflow-hidden border border-slate-200">
-            <!-- Modal Header -->
-            <div class="px-4 sm:px-6 py-3.5 sm:py-4 bg-gradient-to-r from-purple-700 to-indigo-600 text-white flex items-center justify-between shrink-0">
-                <div class="flex items-center gap-2.5">
-                    <div class="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center border border-white/20 shrink-0">
-                        <i data-lucide="cloud" class="w-5 h-5 text-white"></i>
-                    </div>
-                    <div>
-                        <h3 class="font-bold text-base leading-tight">Database & Safe Place Settings</h3>
-                        <p class="text-purple-100 text-xs">Protect your records from browser history clearing</p>
-                    </div>
-                </div>
-                <button onclick="closeModal('modal-cloud-db')" class="text-white/70 hover:text-white p-1 rounded-lg hover:bg-white/10 transition cursor-pointer">
-                    <i data-lucide="x" class="w-5 h-5"></i>
-                </button>
-            </div>
-
-            <!-- Modal Body -->
-            <div class="p-4 sm:p-6 space-y-4 overflow-y-auto flex-1">
-                <!-- Status Box -->
-                <div id="cloud-db-status-box" class="p-3.5 rounded-xl border text-xs">
-                    <!-- Populated dynamically by JS -->
-                </div>
-
-                <!-- Explanation for GitHub Pages -->
-                <div class="bg-amber-50 border border-amber-200 rounded-xl p-3.5 text-xs text-amber-950 space-y-2">
-                    <div class="font-bold flex items-center gap-1.5 text-amber-900">
-                        <i data-lucide="info" class="w-4 h-4 text-amber-600 shrink-0"></i>
-                        Why does clearing browser history remove data on GitHub Pages?
-                    </div>
-                    <p class="text-[11px] leading-relaxed">
-                        GitHub Pages (<code>github.io</code>) is a static website host. Without a cloud database connected, data entered on GitHub Pages is saved in your browser temporary storage. Clearing browser history wipes that storage.
-                    </p>
-                </div>
-
-                <!-- Safe Place Options -->
-                <div class="space-y-3">
-                    <h4 class="text-xs font-bold uppercase tracking-wider text-slate-700">Permanent Safe Place Options:</h4>
-
-                    <!-- Option 1: Desktop Hard Drive SQLite -->
-                    <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
-                        <div class="font-bold text-xs text-slate-900 flex items-center gap-1.5">
-                            <span class="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-[10px] font-bold">1</span>
-                            Run on your PC with Local SQLite Database (100% Safe)
-                        </div>
-                        <p class="text-[11px] text-slate-600">
-                            Run <code>START_KHODAL_OFFICE.bat</code> on your PC. It saves everything permanently to <code>D:\Khodal_info\data\khodal_office.db</code>. Clearing browser history will <strong>NEVER</strong> delete your records!
-                        </p>
-                    </div>
-
-                    <!-- Option 2: Cloud Backend Server URL -->
-                    <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
-                        <div class="font-bold text-xs text-slate-900 flex items-center gap-1.5">
-                            <span class="w-5 h-5 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center text-[10px] font-bold">2</span>
-                            Connect to Cloud Database Server (e.g. Render / Railway)
-                        </div>
-                        <p class="text-[11px] text-slate-600">
-                            Deploy your repo to Render.com using the included <code>render.yaml</code>, then enter your public HTTPS server URL below:
-                        </p>
-                        <div class="flex flex-col sm:flex-row gap-2">
-                            <input type="url" id="custom-cloud-url-input" placeholder="https://khodal-office-hub.onrender.com"
-                                class="flex-1 px-3 py-1.5 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 font-mono">
-                            <button onclick="saveCustomCloudUrl()" class="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-semibold transition cursor-pointer">
-                                Connect
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- Option 3: 1-Click Backup & Restore -->
-                    <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
-                        <div class="font-bold text-xs text-slate-900 flex items-center gap-1.5">
-                            <span class="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px] font-bold">3</span>
-                            1-Click Database File Backup & Restore
-                        </div>
-                        <p class="text-[11px] text-slate-600">
-                            Download a full copy of all records to keep on your computer, or restore a previously saved backup file anytime.
-                        </p>
-                        <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-1">
-                            <button onclick="backupDatabase()" class="flex-1 py-2 sm:py-1.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1 transition cursor-pointer">
-                                <i data-lucide="download" class="w-3.5 h-3.5"></i> Download Backup (.json)
-                            </button>
-                            <label class="flex-1 py-2 sm:py-1.5 px-3 bg-slate-700 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1 transition cursor-pointer text-center">
-                                <i data-lucide="upload" class="w-3.5 h-3.5"></i> Restore Backup
-                                <input type="file" accept=".json" onchange="handleRestoreBackupFile(event)" class="hidden">
-                            </label>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Modal Footer -->
-            <div class="px-4 sm:px-6 py-3 bg-slate-100 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500 shrink-0">
-                <span>Safe Place Protection Active</span>
-                <button onclick="closeModal('modal-cloud-db')" class="px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg font-medium text-slate-700 transition cursor-pointer">
-                    Close
-                </button>
-            </div>
-        </div>
-    </div>
-
-    <!-- FLOATING TOAST CONTAINER -->
-    <div id="toast-container"></div>
-
-    <!-- Preloaded Database Records for GitHub Pages & Static Mode -->
-    <script src="data/records.js?v=20261104"></script>
-
-    <!-- Frontend Script -->
-    <script src="static/js/app.js?v=20261104R"></script>
-</body>
-</html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover">
+    <title>Khodal Office Hub | Daily Service Tracker & Fast Search</title>
+
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eef2ff',
+                            100: '#e0e7ff',
+                            200: '#c7d2fe',
+                            300: '#a5b4fc',
+                            400: '#818cf8',
+                            500: '#6366f1',
+                            600: '#4f46e5',
+                            700: '#4338ca',
+                            800: '#3730a3',
+                            900: '#312e81',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Prevent aggressive browser caching on GitHub Pages -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <!-- SheetJS for client-side Excel reading & export -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="static/css/custom.css?v=20261104R">
+</head>
+<body class="bg-slate-100 text-slate-800 min-h-screen flex flex-col antialiased">
+
+    <!-- MASTER USER LOGIN OVERLAY (id: manish / pass: manish@7575) -->
+    <div id="auth-login-modal" class="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 transition-all duration-300">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-200">
+            <!-- Header -->
+            <div class="bg-gradient-to-r from-brand-700 via-brand-600 to-indigo-600 p-5 sm:p-6 text-white text-center relative">
+                <div class="w-12 h-12 sm:w-14 sm:h-14 mx-auto mb-2 sm:mb-3 rounded-2xl bg-white/10 backdrop-blur-xs flex items-center justify-center border border-white/20 shadow-inner">
+                    <i data-lucide="shield-check" class="w-7 h-7 sm:w-8 sm:h-8 text-white"></i>
+                </div>
+                <h2 class="text-lg sm:text-xl font-bold tracking-tight">KHODAL OFFICE DATA HUB</h2>
+                <p class="text-brand-100 text-xs mt-1">Master User Authentication Required</p>
+            </div>
+
+            <!-- Body Form -->
+            <form onsubmit="handleMasterLogin(event)" class="p-5 sm:p-6 space-y-4">
+                <div id="login-error-alert" class="hidden p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs flex items-center gap-2">
+                    <i data-lucide="alert-circle" class="w-4 h-4 shrink-0"></i>
+                    <span id="login-error-text">Invalid User ID or Password</span>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">User ID</label>
+                    <div class="relative">
+                        <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                            <i data-lucide="user" class="w-4 h-4"></i>
+                        </span>
+                        <input type="text" id="login-username" value="manish" required
+                            class="w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-hidden font-medium text-slate-800"
+                            placeholder="Enter user id (e.g. manish or admin)">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Password</label>
+                    <div class="relative">
+                        <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                            <i data-lucide="lock" class="w-4 h-4"></i>
+                        </span>
+                        <input type="password" id="login-password" required
+                            class="w-full pl-9 pr-10 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-hidden font-medium text-slate-800"
+                            placeholder="Enter password">
+                        <button type="button" onclick="togglePasswordVisibility('login-password', 'eye-icon-login')" class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer">
+                            <i data-lucide="eye" id="eye-icon-login" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="flex items-center justify-between text-xs text-slate-500 pt-1">
+                    <span class="flex items-center gap-1 font-mono text-[11px] bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                        <i data-lucide="key" class="w-3 h-3 text-slate-400"></i> Master ID: <strong>manish</strong> or <strong>admin</strong>
+                    </span>
+                    <span class="text-slate-400 font-semibold text-[11px] flex items-center gap-1">
+                        <i data-lucide="database" class="w-3 h-3 text-indigo-500"></i> Database Auth
+                    </span>
+                </div>
+
+                <button type="submit" id="login-submit-btn"
+                    class="w-full mt-2 py-2.5 px-4 bg-brand-600 hover:bg-brand-700 active:bg-brand-800 text-white font-semibold rounded-xl shadow-md hover:shadow-lg transition flex items-center justify-center gap-2 text-sm cursor-pointer">
+                    <i data-lucide="log-in" class="w-4 h-4"></i>
+                    <span>Sign In to Office Hub</span>
+                </button>
+                <div class="pt-2 flex items-center gap-2">
+                    <button type="button" onclick="quickFillLogin('manish', 'manish@7575')" class="flex-1 py-1.5 px-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl border border-slate-300 transition flex items-center justify-center gap-1 cursor-pointer">
+                        <i data-lucide="zap" class="w-3.5 h-3.5 text-amber-500"></i> 1-Click Manish
+                    </button>
+                    <button type="button" onclick="quickFillLogin('admin', 'admin@7575')" class="flex-1 py-1.5 px-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl border border-slate-300 transition flex items-center justify-center gap-1 cursor-pointer">
+                        <i data-lucide="shield" class="w-3.5 h-3.5 text-indigo-500"></i> 1-Click Admin
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- FULLSCREEN DRAG & DROP OVERLAY -->
+    <div id="fullscreen-drop-overlay" class="fixed inset-0 z-50 bg-slate-900/85 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-white text-center hidden pointer-events-none transition-all duration-200">
+        <div class="w-16 h-16 sm:w-20 sm:h-20 rounded-3xl bg-brand-600/30 border-2 border-dashed border-brand-400 flex items-center justify-center mb-4 animate-bounce">
+            <i data-lucide="upload-cloud" class="w-8 h-8 sm:w-10 sm:h-10 text-brand-300"></i>
+        </div>
+        <h2 class="text-xl sm:text-2xl font-bold tracking-tight mb-2">Drop File to Auto-Import in Real Time</h2>
+        <p class="text-slate-300 text-xs sm:text-sm max-w-md">Drop any Excel (.xlsx, .xls) or CSV with UC Aadhaar (SID), Aadhaar Online (SRN), PAN, or Ayushman sheets.</p>
+    </div>
+
+    <!-- TOP NAV HEADER -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
+        <div class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <!-- Branding -->
+                <div class="flex items-center gap-2.5 sm:gap-3">
+                    <div class="h-9 w-9 sm:h-10 sm:w-10 rounded-xl bg-gradient-to-tr from-brand-700 to-indigo-500 flex items-center justify-center text-white shadow-md shadow-brand-500/20 shrink-0">
+                        <i data-lucide="layers" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <div class="flex items-center gap-1.5 sm:gap-2">
+                            <h1 class="text-base sm:text-lg font-bold text-slate-900 tracking-tight">KHODAL</h1>
+                            <span class="text-[10px] sm:text-xs px-2 py-0.5 font-bold rounded-full bg-brand-50 text-brand-700 border border-brand-200 whitespace-nowrap">Daily Office Hub</span>
+                        </div>
+                        <p class="text-[11px] text-slate-500 hidden sm:block">UC Aadhaar • Aadhaar Online • PAN Card • Ayushman</p>
+                    </div>
+                </div>
+
+                <!-- Desktop Right Action Bar (Visible on md and up) -->
+                <div class="hidden md:flex items-center gap-2 lg:gap-2.5">
+                    <!-- Master User Profile Badge -->
+                    <div id="user-profile-badge" class="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-100 border border-slate-200 rounded-lg text-xs">
+                        <div id="user-avatar-initial" class="w-5 h-5 rounded-full bg-brand-600 text-white flex items-center justify-center font-bold text-[10px]">M</div>
+                        <span class="font-semibold text-slate-800" id="user-display-name">Manish</span>
+                        <span id="user-role-badge" class="text-[10px] px-1.5 py-0.5 rounded bg-brand-100 text-brand-800 font-bold hidden lg:inline">Master</span>
+                        <button onclick="logoutMasterUser()" title="Logout" class="text-slate-400 hover:text-rose-600 transition ml-1 p-0.5 rounded cursor-pointer">
+                            <i data-lucide="log-out" class="w-3.5 h-3.5"></i>
+                        </button>
+                    </div>
+
+                    <!-- Master Users Management Button -->
+                    <button onclick="openMasterUsersModal()" title="Manage Master Users in Database" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-semibold transition shadow-2xs cursor-pointer">
+                        <i data-lucide="shield" class="w-3.5 h-3.5 text-indigo-600"></i>
+                        <span class="hidden lg:inline">Master Users</span>
+                    </button>
+
+                    <!-- LAN Share Pill -->
+                    <div id="lan-share-box" class="hidden xl:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-800">
+                        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+                        <span><span id="lan-label-display">Office LAN:</span> <strong id="lan-url-display" class="font-mono">Loading...</strong></span>
+                        <button onclick="copyShareUrl()" title="Copy Link to Share in Office" class="hover:text-emerald-950 p-1 rounded hover:bg-emerald-100 transition">
+                            <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                        </button>
+                    </div>
+
+                    <!-- Backup DB Button -->
+                    <button onclick="backupDatabase()" class="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition border border-emerald-200 shadow-2xs cursor-pointer" title="1-Click Permanent Database Backup">
+                        <i data-lucide="database" class="w-4 h-4 text-emerald-600"></i>
+                        <span class="hidden lg:inline">Backup DB</span>
+                    </button>
+
+                    <!-- Cloud DB Settings Button -->
+                    <button onclick="openCloudDbModal()" class="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-lg transition border border-purple-200 shadow-2xs cursor-pointer" title="Cloud Database & Safe Place Settings">
+                        <i data-lucide="cloud" class="w-4 h-4 text-purple-600"></i>
+                        <span class="hidden lg:inline">Cloud DB</span>
+                    </button>
+
+                    <!-- Files Manager Button -->
+                    <button onclick="openFilesModal()" class="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition border border-slate-200 cursor-pointer" title="View Uploaded File History">
+                        <i data-lucide="folder-archive" class="w-4 h-4 text-slate-600"></i>
+                        <span>Files</span>
+                    </button>
+
+                    <!-- Excel Template Button -->
+                    <a href="templates/Khodal_Office_Master_Template.xlsx" download="Khodal_Office_Master_Template.xlsx" class="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg transition border border-blue-200 shadow-2xs" title="Download Official Master Excel Format">
+                        <i data-lucide="file-spreadsheet" class="w-4 h-4 text-blue-600"></i>
+                        <span class="hidden lg:inline">Template</span>
+                    </a>
+
+                    <!-- Add Record Button -->
+                    <button onclick="openAddRecordModal()" class="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg shadow-2xs hover:shadow transition cursor-pointer">
+                        <i data-lucide="plus-circle" class="w-4 h-4 text-brand-600"></i>
+                        <span>New Entry</span>
+                    </button>
+
+                    <!-- Upload Daily Data Button -->
+                    <button onclick="openUploadModal()" class="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-brand-600 hover:bg-brand-700 rounded-lg shadow-sm hover:shadow transition cursor-pointer">
+                        <i data-lucide="upload-cloud" class="w-4 h-4"></i>
+                        <span>Upload Daily Data</span>
+                    </button>
+                </div>
+
+                <!-- Mobile Action Bar (Visible on mobile < md) -->
+                <div class="flex md:hidden items-center gap-1.5">
+                    <!-- Compact New Entry Button -->
+                    <button onclick="openAddRecordModal()" title="New Entry" aria-label="Add New Entry" class="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-white border border-slate-300 text-brand-600 hover:bg-slate-50 active:bg-slate-100 shadow-2xs transition cursor-pointer">
+                        <i data-lucide="plus" class="w-5 h-5"></i>
+                    </button>
+
+                    <!-- Compact Upload Daily Data Button -->
+                    <button onclick="openUploadModal()" aria-label="Upload Daily Data" class="inline-flex items-center gap-1 px-3 py-2 text-xs font-semibold text-white bg-brand-600 hover:bg-brand-700 active:bg-brand-800 rounded-xl shadow-2xs transition cursor-pointer min-h-[40px]">
+                        <i data-lucide="upload-cloud" class="w-4 h-4"></i>
+                        <span>Upload</span>
+                    </button>
+
+                    <!-- Mobile Menu Dropdown Toggle Button -->
+                    <button onclick="toggleMobileMenu()" id="mobile-menu-toggle-btn" aria-label="Toggle navigation menu" aria-expanded="false" class="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-slate-100 border border-slate-200 text-slate-700 hover:bg-slate-200 active:bg-slate-300 transition cursor-pointer" title="More Tools & Menu">
+                        <i data-lucide="menu" class="w-5 h-5"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Collapsible Mobile Menu Drawer (Below Header) -->
+        <div id="mobile-nav-menu" class="hidden md:hidden border-t border-slate-200 bg-white shadow-lg animate-slide-down flex-col px-4 py-3 space-y-3">
+            <!-- Active User Info Bar -->
+            <div class="flex items-center justify-between p-2.5 bg-slate-50 rounded-xl border border-slate-200 text-xs">
+                <div class="flex items-center gap-2">
+                    <div id="mobile-user-avatar" class="w-7 h-7 rounded-full bg-brand-600 text-white flex items-center justify-center font-bold text-xs">M</div>
+                    <div>
+                        <div class="font-bold text-slate-800" id="mobile-user-display-name">Manish</div>
+                        <div class="text-[10px] text-brand-700 font-semibold">Master Administrator</div>
+                    </div>
+                </div>
+                <button onclick="logoutMasterUser()" class="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg font-semibold text-xs border border-rose-200 flex items-center gap-1 transition cursor-pointer">
+                    <i data-lucide="log-out" class="w-3.5 h-3.5"></i> Logout
+                </button>
+            </div>
+
+            <!-- Quick Navigation Grid -->
+            <div class="grid grid-cols-2 gap-2 text-xs">
+                <button onclick="closeMobileMenu(); openMasterUsersModal();" class="flex items-center gap-2 p-2.5 rounded-xl bg-indigo-50/70 border border-indigo-200 text-indigo-800 hover:bg-indigo-100 font-semibold transition text-left cursor-pointer">
+                    <i data-lucide="shield" class="w-4 h-4 text-indigo-600 shrink-0"></i>
+                    <span>Master Users</span>
+                </button>
+
+                <button onclick="closeMobileMenu(); openCloudDbModal();" class="flex items-center gap-2 p-2.5 rounded-xl bg-purple-50/70 border border-purple-200 text-purple-800 hover:bg-purple-100 font-semibold transition text-left cursor-pointer">
+                    <i data-lucide="cloud" class="w-4 h-4 text-purple-600 shrink-0"></i>
+                    <span>Cloud DB</span>
+                </button>
+
+                <button onclick="closeMobileMenu(); backupDatabase();" class="flex items-center gap-2 p-2.5 rounded-xl bg-emerald-50/70 border border-emerald-200 text-emerald-800 hover:bg-emerald-100 font-semibold transition text-left cursor-pointer">
+                    <i data-lucide="database" class="w-4 h-4 text-emerald-600 shrink-0"></i>
+                    <span>Backup DB</span>
+                </button>
+
+                <button onclick="closeMobileMenu(); openFilesModal();" class="flex items-center gap-2 p-2.5 rounded-xl bg-slate-100 border border-slate-200 text-slate-800 hover:bg-slate-200 font-semibold transition text-left cursor-pointer">
+                    <i data-lucide="folder-archive" class="w-4 h-4 text-slate-600 shrink-0"></i>
+                    <span>Uploaded Files</span>
+                </button>
+
+                <a href="templates/Khodal_Office_Master_Template.xlsx" download="Khodal_Office_Master_Template.xlsx" class="flex items-center gap-2 p-2.5 rounded-xl bg-blue-50/70 border border-blue-200 text-blue-800 hover:bg-blue-100 font-semibold transition text-left">
+                    <i data-lucide="file-spreadsheet" class="w-4 h-4 text-blue-600 shrink-0"></i>
+                    <span>Excel Template</span>
+                </a>
+
+                <button onclick="closeMobileMenu(); copyShareUrl();" class="flex items-center gap-2 p-2.5 rounded-xl bg-amber-50/70 border border-amber-200 text-amber-800 hover:bg-amber-100 font-semibold transition text-left cursor-pointer">
+                    <i data-lucide="share-2" class="w-4 h-4 text-amber-600 shrink-0"></i>
+                    <span>Share Hub Link</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- MAIN DASHBOARD CONTENT -->
+    <main class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-5 flex-1 w-full space-y-4 sm:space-y-5">
+
+        <!-- PERMANENT DATABASE STATUS BANNER -->
+        <div id="db-storage-status-banner" class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-3.5 py-2 bg-emerald-50/90 border border-emerald-200/90 rounded-xl text-xs text-emerald-900 shadow-2xs">
+            <div class="flex items-center gap-2">
+                <span class="relative flex h-2.5 w-2.5 shrink-0">
+                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                </span>
+                <span id="db-status-text" class="break-words"><strong>Permanent Database Active:</strong> Stored on disk (<code>data/khodal_office.db</code>) — immune to browser history clears.</span>
+            </div>
+            <div class="flex items-center gap-3 shrink-0">
+                <button onclick="backupDatabase()" class="font-bold text-emerald-700 hover:text-emerald-900 underline flex items-center gap-1 cursor-pointer">
+                    <i data-lucide="download" class="w-3.5 h-3.5"></i> 1-Click Backup
+                </button>
+            </div>
+        </div>
+
+        <!-- 1. SERVICE TABS (Field Division) -->
+        <div class="bg-white rounded-xl border border-slate-200 shadow-xs p-1.5 flex items-center justify-between">
+            <div tabindex="0" role="region" aria-label="Service tabs navigation" class="flex items-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar scroll-smooth py-0.5 w-full">
+                <!-- All Services -->
+                <button onclick="switchServiceTab('all')" id="tab-all" class="service-tab-btn active px-3 sm:px-3.5 py-2 rounded-lg text-xs font-bold transition flex items-center gap-1.5 sm:gap-2 bg-brand-600 text-white shadow-2xs shrink-0 whitespace-nowrap cursor-pointer">
+                    <i data-lucide="layout-grid" class="w-4 h-4"></i>
+                    <span>All Services</span>
+                    <span id="tab-badge-all" class="px-1.5 py-0.2 rounded-full text-[10px] bg-white/20 text-white font-mono">0</span>
+                </button>
+
+                <!-- Service 1: UC Aadhaar -->
+                <button onclick="switchServiceTab('ucaadhar')" id="tab-ucaadhar" class="service-tab-btn px-3 sm:px-3.5 py-2 rounded-lg text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap cursor-pointer">
+                    <span class="w-2 h-2 rounded-full bg-blue-500"></span>
+                    <span>🪪 UC Aadhaar (SID)</span>
+                    <span id="tab-badge-ucaadhar" class="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-200 text-slate-700 font-mono">0</span>
+                </button>
+
+                <!-- Service 2: Aadhaar Online -->
+                <button onclick="switchServiceTab('aadhar_online')" id="tab-aadhar_online" class="service-tab-btn px-3 sm:px-3.5 py-2 rounded-lg text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap cursor-pointer">
+                    <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                    <span>🌐 Aadhaar Online (SRN)</span>
+                    <span id="tab-badge-aadhar_online" class="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-200 text-slate-700 font-mono">0</span>
+                </button>
+
+                <!-- Service 3: PAN Card -->
+                <button onclick="switchServiceTab('pancard')" id="tab-pancard" class="service-tab-btn px-3 sm:px-3.5 py-2 rounded-lg text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap cursor-pointer">
+                    <span class="w-2 h-2 rounded-full bg-amber-500"></span>
+                    <span>💳 PAN Card</span>
+                    <span id="tab-badge-pancard" class="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-200 text-slate-700 font-mono">0</span>
+                </button>
+
+                <!-- Service 4: Ayushman Card -->
+                <button onclick="switchServiceTab('aayushman')" id="tab-aayushman" class="service-tab-btn px-3 sm:px-3.5 py-2 rounded-lg text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap cursor-pointer">
+                    <span class="w-2 h-2 rounded-full bg-purple-500"></span>
+                    <span>🏥 Ayushman Card</span>
+                    <span id="tab-badge-aayushman" class="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-200 text-slate-700 font-mono">0</span>
+                </button>
+            </div>
+
+            <!-- Export Buttons on Right -->
+            <div class="hidden lg:flex items-center gap-2 pl-4 border-l border-slate-200 shrink-0">
+                <button onclick="exportCurrentView('excel')" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition whitespace-nowrap cursor-pointer" title="Export current filtered view to Excel">
+                    <i data-lucide="download" class="w-3.5 h-3.5"></i>
+                    <span>Export Excel</span>
+                </button>
+                <button onclick="exportCurrentView('csv')" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-lg transition whitespace-nowrap cursor-pointer" title="Export to CSV">
+                    <i data-lucide="file-text" class="w-3.5 h-3.5"></i>
+                    <span>CSV</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- 2. DAILY PROGRESS & STATUS TRACKER BAR -->
+        <div class="bg-white rounded-xl border border-slate-200 shadow-xs p-4 sm:p-5 space-y-4">
+            <!-- Header with Date Selector -->
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                <div class="flex items-center gap-2.5">
+                    <div class="p-2 bg-indigo-50 text-indigo-700 rounded-lg shrink-0">
+                        <i data-lucide="calendar-check-2" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <h2 class="text-sm font-bold text-slate-900">Daily Work Progress & Overview</h2>
+                        <p class="text-xs text-slate-500">Select any date to check daily progress, completed tasks, and pending dues</p>
+                    </div>
+                </div>
+
+                <!-- Date Input, Quick Selector & Fast Date Actions -->
+                <div class="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2 w-full md:w-auto">
+                    <div class="flex items-center gap-2 flex-1 sm:flex-initial">
+                        <!-- Write / Pick Custom Date Input -->
+                        <div class="relative flex items-center flex-1 sm:flex-initial">
+                            <span class="text-xs font-bold text-slate-600 mr-1.5 hidden sm:inline">Date:</span>
+                            <input type="date" id="showcase-date-input" onchange="onCustomDateFilterChange(this.value)"
+                                class="w-full sm:w-auto text-xs font-semibold bg-slate-50 hover:bg-white border border-slate-300 rounded-lg px-2.5 py-2 text-slate-800 outline-hidden focus:ring-2 focus:ring-brand-500 cursor-pointer shadow-2xs min-h-[38px]"
+                                title="Write or pick any appropriate date to showcase">
+                        </div>
+
+                        <!-- Available Dates Dropdown -->
+                        <div class="relative flex-1 sm:flex-initial">
+                            <select id="quick-date-selector" onchange="onDateSelectorChange(this.value)"
+                                class="w-full sm:w-auto text-xs font-semibold bg-slate-50 hover:bg-white border border-slate-300 rounded-lg px-2.5 py-2 text-slate-700 outline-hidden focus:ring-2 focus:ring-brand-500 max-w-full sm:max-w-[175px] cursor-pointer min-h-[38px]"
+                                title="Quick select from available record dates">
+                                <option value="">All Dates (Overview)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-1.5 w-full sm:w-auto">
+                        <!-- Jump to Latest Date in Work Records -->
+                        <button onclick="selectLatestDate()" class="flex-1 sm:flex-initial justify-center px-2.5 py-2 text-xs font-semibold bg-brand-50 text-brand-700 hover:bg-brand-100 border border-brand-200 rounded-lg transition inline-flex items-center gap-1 shadow-2xs whitespace-nowrap cursor-pointer min-h-[38px]" title="Show latest record date from your uploaded data">
+                            <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+                            <span>Latest</span>
+                        </button>
+
+                        <!-- Today's Date -->
+                        <button onclick="setTodayDate()" class="flex-1 sm:flex-initial justify-center px-2.5 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 border border-slate-200 rounded-lg transition whitespace-nowrap cursor-pointer min-h-[38px]" title="Filter by today's date">
+                            Today
+                        </button>
+
+                        <!-- All Dates (Reset) -->
+                        <button onclick="resetDateFilter()" class="flex-1 sm:flex-initial justify-center px-2.5 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 border border-slate-200 rounded-lg transition inline-flex items-center gap-1 whitespace-nowrap cursor-pointer min-h-[38px]" title="View all records (all dates)">
+                            <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
+                            <span>All</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Progress Metric Cards Grid -->
+            <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-3">
+                <!-- Total Applications -->
+                <div class="p-3 sm:p-3.5 rounded-xl bg-slate-50 border border-slate-200 min-h-[82px] flex flex-col justify-between">
+                    <p class="text-[11px] sm:text-xs font-semibold text-slate-500 truncate">Total Applications</p>
+                    <div class="flex items-baseline gap-1.5 mt-1">
+                        <h3 id="stat-progress-total" class="stat-card-number font-black text-slate-900 truncate">0</h3>
+                        <span id="stat-progress-date-pill" class="text-[10px] sm:text-[11px] font-mono font-medium text-slate-400">All</span>
+                    </div>
+                </div>
+
+                <!-- Completed -->
+                <div class="p-3 sm:p-3.5 rounded-xl bg-emerald-50/70 border border-emerald-200 cursor-pointer hover:bg-emerald-100/60 active:scale-[0.98] transition min-h-[82px] flex flex-col justify-between" onclick="filterByStatusQuick('Completed')" title="Click to view only Completed">
+                    <div class="flex items-center justify-between">
+                        <p class="text-[11px] sm:text-xs font-semibold text-emerald-800 truncate">Completed</p>
+                        <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-600 shrink-0"></i>
+                    </div>
+                    <div class="flex items-baseline gap-1.5 mt-1">
+                        <h3 id="stat-progress-completed" class="stat-card-number font-black text-emerald-900 truncate">0</h3>
+                        <span id="stat-progress-rate" class="text-[10px] sm:text-xs font-bold text-emerald-700 px-1.5 py-0.5 rounded-md bg-emerald-200/60 font-mono">0%</span>
+                    </div>
+                </div>
+
+                <!-- In-Process -->
+                <div class="p-3 sm:p-3.5 rounded-xl bg-amber-50/70 border border-amber-200 cursor-pointer hover:bg-amber-100/60 active:scale-[0.98] transition min-h-[82px] flex flex-col justify-between" onclick="filterByStatusQuick('InProgress')" title="Click to view only In-Progress">
+                    <div class="flex items-center justify-between">
+                        <p class="text-[11px] sm:text-xs font-semibold text-amber-800 truncate">In-Process</p>
+                        <i data-lucide="clock-3" class="w-4 h-4 text-amber-600 shrink-0"></i>
+                    </div>
+                    <div class="flex items-baseline gap-1.5 mt-1">
+                        <h3 id="stat-progress-inprocess" class="stat-card-number font-black text-amber-900 truncate">0</h3>
+                        <span class="text-[10px] sm:text-[11px] text-amber-700">active</span>
+                    </div>
+                </div>
+
+                <!-- Rejected -->
+                <div class="p-3 sm:p-3.5 rounded-xl bg-rose-50/70 border border-rose-200 cursor-pointer hover:bg-rose-100/60 active:scale-[0.98] transition min-h-[82px] flex flex-col justify-between" onclick="filterByStatusQuick('Rejected')" title="Click to view only Rejected">
+                    <div class="flex items-center justify-between">
+                        <p class="text-[11px] sm:text-xs font-semibold text-rose-800 truncate">Rejected</p>
+                        <i data-lucide="x-circle" class="w-4 h-4 text-rose-600 shrink-0"></i>
+                    </div>
+                    <div class="flex items-baseline gap-1.5 mt-1">
+                        <h3 id="stat-progress-rejected" class="stat-card-number font-black text-rose-900 truncate">0</h3>
+                        <span id="stat-progress-reject-rate" class="text-[10px] sm:text-[11px] font-bold text-rose-700 px-1.5 py-0.5 rounded-md bg-rose-200/60 font-mono">0%</span>
+                    </div>
+                </div>
+
+                <!-- Baki / Action Required -->
+                <div class="p-3 sm:p-3.5 rounded-xl bg-purple-50/70 border border-purple-200 cursor-pointer hover:bg-purple-100/60 active:scale-[0.98] transition min-h-[82px] flex flex-col justify-between" onclick="toggleBakiFilter()" title="Click to filter BAKI & NOT RECEIVED cases">
+                    <div class="flex items-center justify-between">
+                        <p class="text-[11px] sm:text-xs font-semibold text-purple-800 truncate">Baki / Dues</p>
+                        <i data-lucide="alert-triangle" class="w-4 h-4 text-purple-600 shrink-0"></i>
+                    </div>
+                    <div class="flex items-baseline gap-1.5 mt-1">
+                        <h3 id="stat-progress-baki" class="stat-card-number font-black text-purple-900 truncate">0</h3>
+                        <span id="baki-active-badge" class="text-[10px] sm:text-[11px] font-bold text-purple-700 px-1.5 py-0.5 rounded-md bg-purple-200/60">pending</span>
+                    </div>
+                </div>
+
+                <!-- Fees Collected -->
+                <div class="p-3 sm:p-3.5 rounded-xl bg-indigo-50/70 border border-indigo-200 min-h-[82px] flex flex-col justify-between">
+                    <div class="flex items-center justify-between">
+                        <p class="text-[11px] sm:text-xs font-semibold text-indigo-800 truncate">Fees / Total</p>
+                        <i data-lucide="banknote" class="w-4 h-4 text-indigo-600 shrink-0"></i>
+                    </div>
+                    <div class="flex items-baseline gap-1 mt-1">
+                        <span class="text-sm sm:text-base font-bold text-indigo-700">₹</span>
+                        <h3 id="stat-progress-fees" class="stat-card-number font-black text-indigo-950 truncate">0</h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. SEARCH & FILTER CONTROLS -->
+        <div class="bg-white rounded-xl border border-slate-200 shadow-xs p-4 sm:p-5 space-y-4">
+            <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="search" class="w-4 h-4 text-brand-600"></i>
+                    <h2 class="text-xs font-bold text-slate-800 uppercase tracking-wider">Instant Multi-Field Search</h2>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button onclick="resetAllFilters()" class="text-xs font-medium text-slate-500 hover:text-slate-800 px-2.5 py-1 rounded hover:bg-slate-100 transition inline-flex items-center gap-1 cursor-pointer">
+                        <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i> Clear Search
+                    </button>
+                </div>
+            </div>
+
+            <!-- Search Inputs Row -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                <!-- Search by Date -->
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1">Search / Filter by Date</label>
+                    <div class="relative">
+                        <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                            <i data-lucide="calendar" class="w-4 h-4"></i>
+                        </span>
+                        <input type="date" id="search-date"
+                            class="w-full pl-9 pr-8 py-2 text-xs sm:text-sm bg-slate-50 focus:bg-white border border-slate-200 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 rounded-lg transition outline-hidden cursor-pointer"
+                            onchange="onSearchDateChange(this.value)"
+                            title="Filter records by date">
+                        <button id="clear-search-date" onclick="clearSearchDate()" class="hidden absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer">
+                            <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Search by Name -->
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1">Search by Name</label>
+                    <div class="relative">
+                        <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                            <i data-lucide="user" class="w-4 h-4"></i>
+                        </span>
+                        <input type="text" id="search-name" placeholder="e.g. Khunt, Patel, Jadwani..."
+                            class="w-full pl-9 pr-8 py-2 text-xs sm:text-sm bg-slate-50 focus:bg-white border border-slate-200 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 rounded-lg transition outline-hidden"
+                            oninput="triggerSearchDebounced()">
+                        <button id="clear-name" onclick="clearInput('search-name')" class="hidden absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer">
+                            <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Search by Mobile Number -->
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1">Search by Mobile Number</label>
+                    <div class="relative">
+                        <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                            <i data-lucide="phone" class="w-4 h-4"></i>
+                        </span>
+                        <input type="text" id="search-mobile" placeholder="e.g. 81283, 9328318876..."
+                            class="w-full pl-9 pr-8 py-2 text-xs sm:text-sm bg-slate-50 focus:bg-white border border-slate-200 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 rounded-lg transition outline-hidden"
+                            oninput="triggerSearchDebounced()">
+                        <button id="clear-mobile" onclick="clearInput('search-mobile')" class="hidden absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer">
+                            <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Search by ID (SID / SRN / Card No) -->
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1">Search SID / SRN / Card No</label>
+                    <div class="relative">
+                        <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                            <i data-lucide="hash" class="w-4 h-4"></i>
+                        </span>
+                        <input type="text" id="search-id" placeholder="e.g. S131114, S14879, PAJY..."
+                            class="w-full pl-9 pr-8 py-2 text-xs sm:text-sm bg-slate-50 focus:bg-white border border-slate-200 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 rounded-lg transition outline-hidden font-mono"
+                            oninput="triggerSearchDebounced()">
+                        <button id="clear-id" onclick="clearInput('search-id')" class="hidden absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer">
+                            <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Status Filter Dropdown -->
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1">Filter by Status / Progress</label>
+                    <div class="relative">
+                        <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                            <i data-lucide="filter" class="w-4 h-4"></i>
+                        </span>
+                        <select id="filter-status" onchange="triggerSearchDebounced()"
+                            class="w-full pl-9 pr-3 py-2 text-xs sm:text-sm bg-slate-50 focus:bg-white border border-slate-200 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 rounded-lg transition outline-hidden appearance-none cursor-pointer">
+                            <option value="all">All Progress Statuses</option>
+                            <option value="completed">Completed Only</option>
+                            <option value="inprogress">InProgress Only</option>
+                            <option value="rejected">Rejected Only</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 4. DATA RECORDS TABLE CONTAINER -->
+        <div id="records-table-container" class="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
+            <!-- Table Header Strip -->
+            <div class="px-3.5 sm:px-5 py-3 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2.5 bg-slate-50/70">
+                <div class="flex items-center gap-2">
+                    <span id="active-service-title" class="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                        All Office Records
+                    </span>
+                    <span id="badge-total-records" class="px-2 py-0.5 text-xs font-semibold rounded-full bg-brand-100 text-brand-800 font-mono">
+                        0 records
+                    </span>
+                </div>
+
+                <!-- View Switcher & Rows selector & Mobile Quick Exports -->
+                <div class="flex items-center gap-2 sm:gap-3 text-xs text-slate-500">
+                    <!-- Responsive View Mode Switcher -->
+                    <div class="flex items-center bg-slate-200/80 p-0.5 rounded-lg border border-slate-300/60" id="view-mode-toggle-group">
+                        <button type="button" id="btn-view-cards" onclick="setViewMode('cards')" class="px-2.5 py-1 text-xs font-semibold rounded-md transition flex items-center gap-1 cursor-pointer bg-white text-brand-700 shadow-2xs" title="Cards View (Optimized for Mobile/Touch)">
+                            <i data-lucide="layout-grid" class="w-3.5 h-3.5"></i>
+                            <span class="hidden sm:inline">Cards</span>
+                        </button>
+                        <button type="button" id="btn-view-table" onclick="setViewMode('table')" class="px-2.5 py-1 text-xs font-semibold rounded-md transition flex items-center gap-1 cursor-pointer text-slate-600 hover:text-slate-900" title="Table View (Full Spreadsheet)">
+                            <i data-lucide="table" class="w-3.5 h-3.5"></i>
+                            <span class="hidden sm:inline">Table</span>
+                        </button>
+                    </div>
+
+                    <div class="flex lg:hidden items-center gap-1.5">
+                        <button onclick="exportCurrentView('excel')" class="px-2 py-1 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 font-semibold text-[11px] inline-flex items-center gap-1 transition cursor-pointer min-h-[30px]" title="Export Excel">
+                            <i data-lucide="download" class="w-3 h-3"></i> Excel
+                        </button>
+                    </div>
+
+                    <div class="flex items-center gap-1.5">
+                        <span class="hidden sm:inline">Rows:</span>
+                        <select id="select-page-size" onchange="changePageSize(this.value)" class="border border-slate-200 rounded-lg px-2 py-1 bg-white text-slate-700 outline-hidden focus:border-brand-500 cursor-pointer min-h-[30px]">
+                            <option value="25" selected>25</option>
+                            <option value="50">50</option>
+                            <option value="100">100</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Active Date / Filter Hint Banner -->
+            <div id="table-filter-hint" class="hidden px-4 sm:px-5 py-2.5 bg-brand-50/80 border-b border-brand-100 text-xs font-semibold text-brand-900 flex flex-wrap items-center justify-between gap-2">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="calendar" class="w-4 h-4 text-brand-600 shrink-0"></i>
+                    <span>Filtering by Date: <strong id="active-date-display" class="font-bold text-brand-950 font-mono"></strong></span>
+                    <span id="cross-date-match-hint" class="ml-2 text-brand-700 font-normal"></span>
+                </div>
+                <button onclick="resetDateFilter()" class="underline text-brand-700 hover:text-brand-900 font-bold text-xs inline-flex items-center gap-1 cursor-pointer">
+                    <i data-lucide="rotate-ccw" class="w-3 h-3"></i> Show All Dates
+                </button>
+            </div>
+
+            <!-- 1. Table Dynamic Content with Horizontal Scroll and Sticky Headers (Modern Web Guidance Compliant) -->
+            <div id="records-table-wrapper" tabindex="0" role="region" aria-label="Khodal Office Records Table" class="table-responsive-container min-h-[350px]">
+                <table class="w-full text-left text-sm text-slate-600">
+                    <thead id="records-table-head" class="bg-slate-50 text-xs font-semibold text-slate-600 uppercase tracking-wider border-b border-slate-200">
+                        <!-- Injected by JS based on current service type tab -->
+                    </thead>
+                    <tbody id="records-table-body" class="divide-y divide-slate-100 font-sans">
+                        <!-- Dynamic Records Injected -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- 2. Mobile Cards Grid View (Optimized for Mobile Phones & Touch Screens) -->
+            <div id="records-cards-view" class="hidden p-3 sm:p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 bg-slate-50/40 min-h-[300px]">
+                <!-- Dynamic Record Cards Injected by JS -->
+            </div>
+
+            <!-- Loading Spinner (shared) -->
+            <div id="table-loading-spinner" class="hidden relative py-16 bg-white/70 backdrop-blur-2xs flex items-center justify-center">
+                <div class="flex flex-col items-center gap-2">
+                    <div class="w-8 h-8 border-3 border-brand-600 border-t-transparent rounded-full animate-spin"></div>
+                    <span class="text-xs font-medium text-slate-600">Loading records...</span>
+                </div>
+            </div>
+
+            <!-- Empty State (shared) -->
+            <div id="table-empty-state" class="hidden py-16 px-4 text-center">
+                <div class="w-16 h-16 bg-slate-100 text-slate-400 rounded-full flex items-center justify-center mx-auto mb-3">
+                    <i data-lucide="file-question" class="w-8 h-8"></i>
+                </div>
+                <h3 id="empty-state-title" class="text-base font-semibold text-slate-800">No Records Found</h3>
+                <p id="empty-state-desc" class="text-xs text-slate-500 max-w-sm mx-auto mt-1">
+                    Try clearing search terms or selecting "All Dates".
+                </p>
+                <button id="empty-state-btn" onclick="resetAllFilters()" class="mt-4 px-4 py-2 text-xs font-semibold text-brand-700 bg-brand-50 hover:bg-brand-100 border border-brand-200 rounded-lg transition inline-flex items-center gap-1.5 cursor-pointer">
+                    Reset Filters
+                </button>
+            </div>
+
+            <!-- Table Pagination Bar -->
+            <div class="px-4 sm:px-5 py-3 border-t border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-600">
+                <div class="text-center sm:text-left">
+                    Showing <span id="page-start-idx" class="font-semibold text-slate-800">0</span> to 
+                    <span id="page-end-idx" class="font-semibold text-slate-800">0</span> of 
+                    <span id="page-total-items" class="font-semibold text-slate-800">0</span> records
+                </div>
+                <div class="flex items-center gap-1.5">
+                    <button id="btn-prev-page" onclick="goToPage(currentPage - 1)" aria-label="Previous Page" class="px-3.5 py-2 min-h-[40px] rounded-xl border border-slate-300 bg-white hover:bg-slate-50 active:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed font-medium transition inline-flex items-center gap-1 shadow-2xs cursor-pointer">
+                        <i data-lucide="chevron-left" class="w-3.5 h-3.5"></i> Prev
+                    </button>
+                    <span class="px-3 py-1 font-semibold text-slate-800 whitespace-nowrap">
+                        Page <span id="current-page-num">1</span> of <span id="total-pages-num">1</span>
+                    </span>
+                    <button id="btn-next-page" onclick="goToPage(currentPage + 1)" aria-label="Next Page" class="px-3.5 py-2 min-h-[40px] rounded-xl border border-slate-300 bg-white hover:bg-slate-50 active:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed font-medium transition inline-flex items-center gap-1 shadow-2xs cursor-pointer">
+                        Next <i data-lucide="chevron-right" class="w-3.5 h-3.5"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- FOOTER -->
+    <footer class="bg-white border-t border-slate-200 py-4 mt-8">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500">
+            <div>
+                <strong>Khodal Office Data Hub</strong> &mdash; UC Aadhaar, Aadhaar Online, PAN Card, Ayushman Card
+            </div>
+            <div>
+                Local SQLite Database • Ready for Daily Office Excel & CSV Imports
+            </div>
+        </div>
+    </footer>
+
+    <!-- ========================================================================= -->
+    <!-- MODAL 1: DAILY EXCEL / CSV UPLOAD -->
+    <!-- ========================================================================= -->
+    <div id="modal-upload" class="hidden fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-lg w-full responsive-modal-box flex flex-col overflow-hidden">
+            <div class="px-4 sm:px-6 py-3.5 sm:py-4 border-b border-slate-100 flex items-center justify-between shrink-0">
+                <div class="flex items-center gap-2">
+                    <div class="p-2 bg-brand-50 text-brand-600 rounded-lg">
+                        <i data-lucide="upload-cloud" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-base font-bold text-slate-900">Upload Daily Excel / CSV</h3>
+                        <p class="text-xs text-slate-500">Import records for any of the 4 office services</p>
+                    </div>
+                </div>
+                <button onclick="closeModal('modal-upload')" class="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <div class="p-4 sm:p-6 space-y-4 overflow-y-auto flex-1">
+                <!-- Safe Place Server Status Notice -->
+                <div id="upload-mode-notice" class="hidden"></div>
+
+                <!-- Select Service Category -->
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1">Select Service Category</label>
+                    <select id="upload-service-select" class="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:ring-2 focus:ring-brand-500 outline-hidden cursor-pointer">
+                        <option value="auto">✨ Automatic Detection (SID ➔ UC Aadhaar, SRN ➔ Aadhaar Online)</option>
+                        <option value="ucaadhar">🪪 UC Aadhaar (SID Number)</option>
+                        <option value="aadhar_online">🌐 Aadhaar Online (SRN Number)</option>
+                        <option value="pancard">💳 PAN Card (New / Update PAN)</option>
+                        <option value="aayushman">🏥 Ayushman Card (Ration Card No)</option>
+                    </select>
+                </div>
+
+                <!-- Download Official Excel Templates Section -->
+                <div class="p-3 bg-blue-50/80 border border-blue-200 rounded-xl space-y-2">
+                    <div class="flex flex-wrap items-center justify-between gap-1.5">
+                        <span class="text-xs font-bold text-blue-950 flex items-center gap-1.5">
+                            <i data-lucide="file-spreadsheet" class="w-4 h-4 text-blue-600"></i>
+                            Download Standard Excel Formats:
+                        </span>
+                        <a href="templates/Khodal_Office_Master_Template.xlsx" download="Khodal_Office_Master_Template.xlsx" class="text-[11px] font-bold text-white bg-blue-600 hover:bg-blue-700 px-2.5 py-1 rounded-md transition shadow-2xs flex items-center gap-1 whitespace-nowrap">
+                            <i data-lucide="download" class="w-3 h-3"></i>
+                            Master (All 4 Services)
+                        </a>
+                    </div>
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-[11px]">
+                        <a href="templates/Template_1_UC_Aadhaar.xlsx" download="Template_1_UC_Aadhaar.xlsx" class="text-center py-1.5 px-1 bg-white hover:bg-blue-100 text-blue-800 border border-blue-200 rounded-lg transition font-medium">
+                            🪪 UC Aadhaar
+                        </a>
+                        <a href="templates/Template_2_Aadhaar_Online.xlsx" download="Template_2_Aadhaar_Online.xlsx" class="text-center py-1.5 px-1 bg-white hover:bg-blue-100 text-blue-800 border border-blue-200 rounded-lg transition font-medium">
+                            🌐 Aadhaar Online
+                        </a>
+                        <a href="templates/Template_3_PAN_Card.xlsx" download="Template_3_PAN_Card.xlsx" class="text-center py-1.5 px-1 bg-white hover:bg-blue-100 text-blue-800 border border-blue-200 rounded-lg transition font-medium">
+                            💳 PAN Card
+                        </a>
+                        <a href="templates/Template_4_Ayushman_Card.xlsx" download="Template_4_Ayushman_Card.xlsx" class="text-center py-1.5 px-1 bg-white hover:bg-blue-100 text-blue-800 border border-blue-200 rounded-lg transition font-medium">
+                            🏥 Ayushman
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Dropzone Area -->
+                <div id="dropzone"
+                     class="border-2 border-dashed border-slate-300 hover:border-brand-500 rounded-xl p-5 sm:p-8 text-center bg-slate-50 hover:bg-brand-50/30 transition cursor-pointer"
+                     onclick="document.getElementById('file-input').click()">
+                    <input type="file" id="file-input" class="hidden" accept=".xlsx, .xls, .csv" onchange="handleFileSelect(event)">
+                    <div class="w-12 h-12 rounded-full bg-brand-100 text-brand-600 flex items-center justify-center mx-auto mb-3">
+                        <i data-lucide="file-up" class="w-6 h-6"></i>
+                    </div>
+                    <h4 class="text-sm font-semibold text-slate-800">Click or Drag & Drop Excel / CSV</h4>
+                    <p class="text-xs text-slate-500 mt-1">Supports date divider rows (e.g. 01-10-2026 / 2026-10-01) automatically</p>
+                    <span id="selected-file-name" class="inline-block mt-3 px-3 py-1 bg-white border border-slate-200 rounded-full text-xs font-mono font-medium text-slate-700 hidden"></span>
+                </div>
+
+                <!-- Progress Bar -->
+                <div id="upload-progress-container" class="hidden space-y-2">
+                    <div class="flex justify-between text-xs font-semibold text-slate-700">
+                        <span>Importing & Indexing records...</span>
+                        <span class="animate-pulse">Please wait</span>
+                    </div>
+                    <div class="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
+                        <div class="bg-brand-600 h-2 rounded-full animate-pulse" style="width: 100%"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="px-4 sm:px-6 py-3.5 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-3 shrink-0">
+                <button onclick="closeModal('modal-upload')" class="px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-200 rounded-lg transition cursor-pointer">
+                    Cancel
+                </button>
+                <button id="btn-submit-upload" onclick="submitFileUpload()" disabled class="px-5 py-2 text-xs font-semibold text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg shadow-sm transition inline-flex items-center gap-1.5 cursor-pointer">
+                    <i data-lucide="check" class="w-4 h-4"></i>
+                    <span>Start Import</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- MODAL 2: ADD / EDIT ENTRY MODAL -->
+    <!-- ========================================================================= -->
+    <div id="modal-record-form" class="hidden fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-lg w-full responsive-modal-box flex flex-col overflow-hidden">
+            <div class="px-4 sm:px-6 py-3.5 sm:py-4 border-b border-slate-100 flex items-center justify-between shrink-0">
+                <div class="flex items-center gap-2">
+                    <div class="p-2 bg-brand-50 text-brand-600 rounded-lg">
+                        <i data-lucide="edit-3" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <h3 id="record-form-title" class="text-base font-bold text-slate-900">New Entry</h3>
+                        <p class="text-xs text-slate-500">Record an office transaction</p>
+                    </div>
+                </div>
+                <button onclick="closeModal('modal-record-form')" class="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <form id="record-form" onsubmit="handleRecordFormSubmit(event)" class="p-4 sm:p-6 space-y-3.5 overflow-y-auto flex-1">
+                <input type="hidden" id="form-record-id">
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">Service Type *</label>
+                        <select id="form-service-type" onchange="updateFormIdLabel(this.value)" required class="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-brand-500 outline-hidden cursor-pointer">
+                            <option value="ucaadhar">🪪 UC Aadhaar (SID Number)</option>
+                            <option value="aadhar_online">🌐 Aadhaar Online (SRN Number)</option>
+                            <option value="pancard">💳 PAN Card</option>
+                            <option value="aayushman">🏥 Ayushman Card</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">Date *</label>
+                        <input type="date" id="form-date" required class="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-brand-500 outline-hidden cursor-pointer">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">Customer / Person Name *</label>
+                        <input type="text" id="form-name" required placeholder="Full Name"
+                            class="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-brand-500 outline-hidden">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">Mobile Number</label>
+                        <input type="text" id="form-mobile" placeholder="10-digit Mobile No"
+                            class="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-brand-500 outline-hidden">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label id="form-id-label" class="block text-xs font-bold text-slate-700 mb-1">SID / SRN / Card No</label>
+                        <input type="text" id="form-id-number" oninput="handleFormIdInput(this.value)" placeholder="e.g. S131114... / PAJY..."
+                            class="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-brand-500 outline-hidden font-mono">
+                    </div>
+                    <div id="form-status-container">
+                        <label class="block text-xs font-bold text-slate-700 mb-1">Status (Aadhaar)</label>
+                        <select id="form-status" class="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-brand-500 outline-hidden cursor-pointer">
+                            <option value="Completed">Completed</option>
+                            <option value="InProgress">InProgress</option>
+                            <option value="Rejected">Rejected</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">PAN Type (If PAN)</label>
+                        <input type="text" id="form-pan-type" placeholder="NEW PAN or PAN UPDATE"
+                            class="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-brand-500 outline-hidden">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">Fee / Total (₹)</label>
+                        <input type="number" step="any" id="form-fee" placeholder="e.g. 200, 100"
+                            class="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-brand-500 outline-hidden">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1">Remark / Notes (e.g. HOF, 200 BAKI, SPEED)</label>
+                    <input type="text" id="form-remark" placeholder="Remarks or dues..."
+                        class="w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-2 focus:ring-brand-500 outline-hidden">
+                </div>
+
+                <div class="pt-3 border-t border-slate-100 flex items-center justify-end gap-3 shrink-0">
+                    <button type="button" onclick="closeModal('modal-record-form')" class="px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 rounded-lg transition cursor-pointer">
+                        Cancel
+                    </button>
+                    <button type="submit" class="px-5 py-2 text-xs font-semibold text-white bg-brand-600 hover:bg-brand-700 rounded-lg shadow-sm transition cursor-pointer">
+                        Save Entry
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- MODAL 3: VIEW RECORD DETAILS -->
+    <!-- ========================================================================= -->
+    <div id="modal-view-record" class="hidden fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-lg w-full responsive-modal-box flex flex-col overflow-hidden">
+            <div class="px-4 sm:px-6 py-3.5 sm:py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/70 shrink-0">
+                <div class="flex items-center gap-3">
+                    <div id="view-avatar" class="w-10 h-10 rounded-xl bg-brand-600 text-white font-bold text-base flex items-center justify-center shadow-xs shrink-0">
+                        K
+                    </div>
+                    <div>
+                        <h3 id="view-name" class="text-base font-bold text-slate-900">Name</h3>
+                        <span id="view-service-badge" class="text-xs px-2 py-0.5 rounded-full font-semibold uppercase bg-slate-100 text-slate-700">SERVICE</span>
+                    </div>
+                </div>
+                <button onclick="closeModal('modal-view-record')" class="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <div class="p-4 sm:p-6 space-y-4 overflow-y-auto flex-1">
+                <!-- WhatsApp & Call -->
+                <div class="grid grid-cols-3 gap-2">
+                    <a id="btn-view-whatsapp" target="_blank" href="#" class="flex flex-col items-center justify-center py-2 px-3 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl text-emerald-800 transition">
+                        <i data-lucide="message-circle" class="w-5 h-5 text-emerald-600 mb-1"></i>
+                        <span class="text-xs font-semibold">WhatsApp</span>
+                    </a>
+                    <a id="btn-view-call" href="#" class="flex flex-col items-center justify-center py-2 px-3 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl text-indigo-800 transition">
+                        <i data-lucide="phone-call" class="w-5 h-5 text-indigo-600 mb-1"></i>
+                        <span class="text-xs font-semibold">Call</span>
+                    </a>
+                    <button onclick="copyCurrentViewCard()" class="flex flex-col items-center justify-center py-2 px-3 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-xl text-slate-800 transition cursor-pointer">
+                        <i data-lucide="copy" class="w-5 h-5 text-slate-600 mb-1"></i>
+                        <span class="text-xs font-semibold">Copy Card</span>
+                    </button>
+                </div>
+
+                <!-- Fields -->
+                <div class="bg-slate-50 rounded-xl p-4 border border-slate-200 space-y-2 text-xs">
+                    <div class="flex justify-between items-center py-1 border-b border-slate-200">
+                        <span class="text-slate-500 font-medium">Date:</span>
+                        <span id="view-date" class="font-bold text-slate-900 font-mono">-</span>
+                    </div>
+                    <div class="flex justify-between items-center py-1 border-b border-slate-200">
+                        <span class="text-slate-500 font-medium">SID / SRN / Card No:</span>
+                        <span id="view-id-num" class="font-bold text-brand-700 font-mono select-all">-</span>
+                    </div>
+                    <div class="flex justify-between items-center py-1 border-b border-slate-200">
+                        <span class="text-slate-500 font-medium">Mobile Number:</span>
+                        <span id="view-mobile" class="font-bold text-slate-900 font-mono">-</span>
+                    </div>
+                    <div id="view-row-status" class="flex justify-between items-center py-1 border-b border-slate-200">
+                        <span class="text-slate-500 font-medium">Progress Status:</span>
+                        <span id="view-status" class="font-semibold text-slate-800">-</span>
+                    </div>
+                    <div id="view-row-fee" class="flex justify-between items-center py-1 border-b border-slate-200">
+                        <span class="text-slate-500 font-medium">Fee / Total Amt:</span>
+                        <span id="view-fee" class="font-bold text-emerald-700">-</span>
+                    </div>
+                    <div class="flex justify-between items-center py-1">
+                        <span class="text-slate-500 font-medium">Remark / Notes:</span>
+                        <span id="view-remark" class="font-medium text-slate-900">-</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="px-4 sm:px-6 py-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-xs shrink-0">
+                <span class="text-slate-500 font-mono">Record #<span id="view-record-id"></span></span>
+                <button onclick="closeModal('modal-view-record')" class="px-4 py-2 font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 transition cursor-pointer">
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- MODAL 4: FILES MANAGEMENT MODAL -->
+    <!-- ========================================================================= -->
+    <div id="modal-files" class="hidden fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-2xl w-full responsive-modal-box flex flex-col overflow-hidden">
+            <div class="px-4 sm:px-6 py-3.5 sm:py-4 border-b border-slate-100 flex items-center justify-between shrink-0">
+                <div class="flex items-center gap-2">
+                    <div class="p-2 bg-emerald-50 text-emerald-600 rounded-lg">
+                        <i data-lucide="folder-spreadsheet" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-base font-bold text-slate-900">Uploaded Office Files</h3>
+                        <p class="text-xs text-slate-500">History of daily Excel and CSV uploads</p>
+                    </div>
+                </div>
+                <button onclick="closeModal('modal-files')" class="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <div class="p-4 sm:p-6 max-h-[60vh] overflow-y-auto flex-1">
+                <div id="files-list-container" class="space-y-3">
+                    <!-- Files dynamically injected -->
+                </div>
+            </div>
+
+            <div class="px-4 sm:px-6 py-3 bg-slate-50 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-xs shrink-0">
+                <button onclick="openUploadModal(); closeModal('modal-files');" class="font-semibold text-brand-600 hover:text-brand-800 inline-flex items-center gap-1 cursor-pointer">
+                    <i data-lucide="plus" class="w-4 h-4"></i> Upload New File
+                </button>
+                <div class="flex items-center gap-2">
+                    <button onclick="clearAllRecordsData()" class="px-3 py-1.5 font-semibold text-rose-600 bg-rose-50 border border-rose-200 rounded-lg hover:bg-rose-100 transition inline-flex items-center gap-1 cursor-pointer">
+                        <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Clear All Data
+                    </button>
+                    <button onclick="closeModal('modal-files')" class="px-4 py-2 font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 transition cursor-pointer">
+                        Done
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MASTER USERS MANAGEMENT MODAL (Stored directly in SQLite Database) -->
+    <div id="modal-master-users" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 hidden">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full responsive-modal-box flex flex-col border border-slate-200 overflow-hidden">
+            <!-- Modal Header -->
+            <div class="px-4 sm:px-6 py-3.5 sm:py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50 shrink-0">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center shadow-xs shrink-0">
+                        <i data-lucide="shield-check" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-base font-bold text-slate-800">Master Users Management</h3>
+                        <p class="text-xs text-slate-500">Stored permanently in database (<span class="font-mono text-indigo-600 font-semibold">khodal_office.db</span>)</p>
+                    </div>
+                </div>
+                <button onclick="closeMasterUsersModal()" class="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-200 transition cursor-pointer">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <!-- Modal Body (Scrollable) -->
+            <div class="p-4 sm:p-6 overflow-y-auto space-y-6 flex-1">
+                <!-- Active Master Users Table -->
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <h4 class="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                            <i data-lucide="users" class="w-4 h-4 text-indigo-600"></i>
+                            Active Master Users in Database
+                        </h4>
+                        <span id="master-users-count-badge" class="px-2 py-0.5 bg-indigo-100 text-indigo-800 text-[11px] font-semibold rounded-full">
+                            Loading...
+                        </span>
+                    </div>
+
+                    <div class="border border-slate-200 rounded-xl overflow-x-auto shadow-2xs">
+                        <table class="w-full text-left text-xs text-slate-700 divide-y divide-slate-200 min-w-[480px]">
+                            <thead class="bg-slate-50 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                                <tr>
+                                    <th class="px-4 py-2.5">User</th>
+                                    <th class="px-4 py-2.5">Username</th>
+                                    <th class="px-4 py-2.5">Role</th>
+                                    <th class="px-4 py-2.5">Last Login</th>
+                                    <th class="px-4 py-2.5 text-right">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="master-users-list-tbody" class="divide-y divide-slate-100 bg-white">
+                                <tr>
+                                    <td colspan="5" class="px-4 py-6 text-center text-slate-400">Loading master users...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Add Master User Form Card -->
+                <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 sm:p-5">
+                    <h4 class="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5 mb-3">
+                        <i data-lucide="user-plus" class="w-4 h-4 text-brand-600"></i>
+                        Add New Master User to Database
+                    </h4>
+
+                    <form id="add-master-user-form" onsubmit="handleAddMasterUser(event)" class="space-y-4">
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-700 mb-1">Full Name</label>
+                                <input type="text" id="new-user-fullname" required placeholder="e.g. Master Admin"
+                                    class="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-hidden bg-white">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-700 mb-1">Username (Login ID)</label>
+                                <input type="text" id="new-user-username" required placeholder="e.g. admin"
+                                    class="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-hidden font-mono bg-white">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-700 mb-1">Password</label>
+                                <div class="relative">
+                                    <input type="password" id="new-user-password" required placeholder="e.g. admin@7575"
+                                        class="w-full pl-3 pr-8 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-hidden bg-white">
+                                    <button type="button" onclick="togglePasswordVisibility('new-user-password', 'eye-icon-newuser')" class="absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer">
+                                        <i data-lucide="eye" id="eye-icon-newuser" class="w-3.5 h-3.5"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
+                            <span class="text-[11px] text-slate-500 flex items-center gap-1.5">
+                                <i data-lucide="database" class="w-3.5 h-3.5 text-indigo-500 shrink-0"></i>
+                                Stored safely in SQLite database.
+                            </span>
+                            <button type="submit" id="add-user-submit-btn"
+                                class="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-xs font-semibold shadow-xs flex items-center justify-center gap-1.5 transition cursor-pointer">
+                                <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+                                <span>Save User to Database</span>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="px-4 sm:px-6 py-3 bg-slate-100 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500 shrink-0">
+                <span class="flex items-center gap-1 font-mono text-[11px]">
+                    <i data-lucide="lock" class="w-3 h-3 text-slate-400"></i> SHA-256 salted hash + DB session token
+                </span>
+                <button onclick="closeMasterUsersModal()" class="px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg font-medium text-slate-700 transition cursor-pointer">
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- CLOUD DATABASE & SAFE PLACE SETTINGS MODAL -->
+    <div id="modal-cloud-db" class="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 hidden">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full responsive-modal-box flex flex-col overflow-hidden border border-slate-200">
+            <!-- Modal Header -->
+            <div class="px-4 sm:px-6 py-3.5 sm:py-4 bg-gradient-to-r from-purple-700 to-indigo-600 text-white flex items-center justify-between shrink-0">
+                <div class="flex items-center gap-2.5">
+                    <div class="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center border border-white/20 shrink-0">
+                        <i data-lucide="cloud" class="w-5 h-5 text-white"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-base leading-tight">Database & Safe Place Settings</h3>
+                        <p class="text-purple-100 text-xs">Protect your records from browser history clearing</p>
+                    </div>
+                </div>
+                <button onclick="closeModal('modal-cloud-db')" class="text-white/70 hover:text-white p-1 rounded-lg hover:bg-white/10 transition cursor-pointer">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <!-- Modal Body -->
+            <div class="p-4 sm:p-6 space-y-4 overflow-y-auto flex-1">
+                <!-- Status Box -->
+                <div id="cloud-db-status-box" class="p-3.5 rounded-xl border text-xs">
+                    <!-- Populated dynamically by JS -->
+                </div>
+
+                <!-- Explanation for GitHub Pages -->
+                <div class="bg-amber-50 border border-amber-200 rounded-xl p-3.5 text-xs text-amber-950 space-y-2">
+                    <div class="font-bold flex items-center gap-1.5 text-amber-900">
+                        <i data-lucide="info" class="w-4 h-4 text-amber-600 shrink-0"></i>
+                        Why does clearing browser history remove data on GitHub Pages?
+                    </div>
+                    <p class="text-[11px] leading-relaxed">
+                        GitHub Pages (<code>github.io</code>) is a static website host. Without a cloud database connected, data entered on GitHub Pages is saved in your browser temporary storage. Clearing browser history wipes that storage.
+                    </p>
+                </div>
+
+                <!-- Safe Place Options -->
+                <div class="space-y-3">
+                    <h4 class="text-xs font-bold uppercase tracking-wider text-slate-700">Permanent Safe Place Options:</h4>
+
+                    <!-- Option 1: Desktop Hard Drive SQLite -->
+                    <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
+                        <div class="font-bold text-xs text-slate-900 flex items-center gap-1.5">
+                            <span class="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-[10px] font-bold">1</span>
+                            Run on your PC with Local SQLite Database (100% Safe)
+                        </div>
+                        <p class="text-[11px] text-slate-600">
+                            Run <code>START_KHODAL_OFFICE.bat</code> on your PC. It saves everything permanently to <code>D:\Khodal_info\data\khodal_office.db</code>. Clearing browser history will <strong>NEVER</strong> delete your records!
+                        </p>
+                    </div>
+
+                    <!-- Option 2: Cloud Backend Server URL -->
+                    <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                        <div class="font-bold text-xs text-slate-900 flex items-center gap-1.5">
+                            <span class="w-5 h-5 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center text-[10px] font-bold">2</span>
+                            Connect to Cloud Database Server (e.g. Render / Railway)
+                        </div>
+                        <p class="text-[11px] text-slate-600">
+                            Deploy your repo to Render.com using the included <code>render.yaml</code>, then enter your public HTTPS server URL below:
+                        </p>
+                        <div class="flex flex-col sm:flex-row gap-2">
+                            <input type="url" id="custom-cloud-url-input" placeholder="https://khodal-office-hub.onrender.com"
+                                class="flex-1 px-3 py-1.5 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 font-mono">
+                            <button onclick="saveCustomCloudUrl()" class="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-semibold transition cursor-pointer">
+                                Connect
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Option 3: 1-Click Backup & Restore -->
+                    <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                        <div class="font-bold text-xs text-slate-900 flex items-center gap-1.5">
+                            <span class="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px] font-bold">3</span>
+                            1-Click Database File Backup & Restore
+                        </div>
+                        <p class="text-[11px] text-slate-600">
+                            Download a full copy of all records to keep on your computer, or restore a previously saved backup file anytime.
+                        </p>
+                        <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-1">
+                            <button onclick="backupDatabase()" class="flex-1 py-2 sm:py-1.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1 transition cursor-pointer">
+                                <i data-lucide="download" class="w-3.5 h-3.5"></i> Download Backup (.json)
+                            </button>
+                            <label class="flex-1 py-2 sm:py-1.5 px-3 bg-slate-700 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1 transition cursor-pointer text-center">
+                                <i data-lucide="upload" class="w-3.5 h-3.5"></i> Restore Backup
+                                <input type="file" accept=".json" onchange="handleRestoreBackupFile(event)" class="hidden">
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="px-4 sm:px-6 py-3 bg-slate-100 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500 shrink-0">
+                <span>Safe Place Protection Active</span>
+                <button onclick="closeModal('modal-cloud-db')" class="px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg font-medium text-slate-700 transition cursor-pointer">
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- FLOATING TOAST CONTAINER -->
+    <div id="toast-container"></div>
+
+    <!-- Preloaded Database Records for GitHub Pages & Static Mode -->
+    <script src="data/records.js?v=20261104"></script>
+
+    <!-- Frontend Script -->
+    <script src="static/js/app.js?v=20261104R"></script>
+</body>
+</html>

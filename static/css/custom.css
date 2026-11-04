@@ -19,7 +19,7 @@ body {
     font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    padding-bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
 }
 
 /* Touch optimization: remove touch delays */
@@ -27,15 +27,17 @@ button, a, input, select, textarea {
     touch-action: manipulation;
 }
 
-/* Prevent unwanted zoom on focus in mobile Safari */
+/* Prevent unwanted zoom on focus in mobile Safari: input font-size >= 16px */
 @media (max-width: 640px) {
     input[type="text"],
     input[type="password"],
     input[type="date"],
     input[type="number"],
     input[type="url"],
-    select {
-        font-size: 14px !important;
+    input[type="search"],
+    select,
+    textarea {
+        font-size: 16px !important;
     }
 }
 
@@ -73,6 +75,12 @@ button, a, input, select, textarea {
     animation: pulse-subtle 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
+/* Fluid typography scaling */
+.stat-card-number {
+    font-size: clamp(1.25rem, 1rem + 1.2vw, 1.75rem);
+    line-height: 1.2;
+}
+
 /* Glassmorphism helpers */
 .glass-panel {
     background: rgba(255, 255, 255, 0.85);
@@ -88,27 +96,29 @@ button, a, input, select, textarea {
 }
 
 /* ========================================================================= */
-/* RESPONSIVE TABLE & FREEZE PANE STYLING */
+/* RESPONSIVE TABLE & FREEZE PANE STYLING (Modern Web Guidance Compliant) */
 /* ========================================================================= */
 .table-responsive-container {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    overscroll-behavior-x: contain;
+    overflow: auto;
+    max-inline-size: 100%;
+    container-type: inline-size;
     position: relative;
     width: 100%;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
 }
 
 .table-responsive-container table {
     border-collapse: separate;
     border-spacing: 0;
     width: 100%;
-    min-width: 760px; /* guarantees comfortable column spacing on mobile */
+    min-width: 760px; /* guarantees comfortable column spacing when scrolling */
 }
 
-/* Sticky Header */
+/* Sticky Header with logical properties */
 .table-responsive-container thead th {
     position: sticky;
-    top: 0;
+    inset-block-start: 0;
     z-index: 20;
     background-color: #f8fafc;
     border-bottom: 1px solid #e2e8f0;
@@ -118,9 +128,9 @@ button, a, input, select, textarea {
 .table-responsive-container th:first-child,
 .table-responsive-container td:first-child {
     position: sticky;
-    left: 0;
+    inset-inline-start: 0;
     z-index: 10;
-    background-color: inherit;
+    background-color: #ffffff;
 }
 
 .table-responsive-container thead th:first-child {
@@ -150,15 +160,47 @@ button, a, input, select, textarea {
 }
 
 /* ========================================================================= */
+/* MOBILE CARD VIEW STYLES */
+/* ========================================================================= */
+.record-card {
+    background-color: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.875rem;
+    padding: 0.875rem;
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04);
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 0.625rem;
+}
+
+.record-card:hover {
+    border-color: #cbd5e1;
+    box-shadow: 0 4px 10px -1px rgba(0, 0, 0, 0.08);
+}
+
+.record-card:active {
+    transform: scale(0.995);
+}
+
+/* ========================================================================= */
 /* RESPONSIVE MODAL DIALOGS (Dynamic Viewport Units) */
 /* ========================================================================= */
 .responsive-modal-box {
     max-height: 90vh;
+    max-height: 90dvh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    margin: 0.5rem;
+    width: calc(100% - 1rem);
 }
 
-@supports (max-height: 92dvh) {
+@media (min-width: 640px) {
     .responsive-modal-box {
-        max-height: 92dvh;
+        margin: 1rem;
+        width: 100%;
     }
 }
 
