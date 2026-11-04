@@ -9,12 +9,22 @@ A complete, high-performance office management system specially built to store, 
 
 ---
 
+## 🛡️ Safe Place Architecture (No Data Loss on History Clear)
+
+### 🟢 SQLite Hard Drive Database (`data/khodal_office.db`)
+- **Permanent Local Storage**: All uploaded office records and client files are saved to the **SQLite Database file on your local disk (`D:\Khodal_info\data\khodal_office.db`)** and `uploads/` folder.
+- **Immune to Browser History Cleaning**: Clearing your browser history, cache, or cookies in Google Chrome, Microsoft Edge, or Firefox will **NEVER** delete your uploaded office data because the database lives on your hard drive, not in temporary browser storage.
+- **Cross-Protocol Auto-Detection**: Whether you open the app via `http://localhost:8000` or double-click `index.html` (`file:///`), the application automatically links to the local SQLite database server.
+- **Multi-Tiered Backup & Recovery**: Records are also mirrored to `data/records.js` on disk, persistent IndexedDB, and rolling JSON backups.
+
+---
+
 ## 🌟 Key Architecture & Data Rules
 
 ### 🚫 Zero Static / Fake Data Policy
-- **No Mock or Demo Data**: All static/fake sample records have been completely removed from the project folder.
+- **No Mock or Demo Data**: All static and fake sample records have been completely removed from the project folder.
 - **Pure Excel Data Source**: Records are only taken from Excel (`.xlsx`, `.xls`) or CSV (`.csv`) files uploaded by the user directly through the browser.
-- **Clean State on Cache Clearing**: When browser history, cookies, or local cache are cleared, the application starts with **0 records** and displays a clean empty state with an upload prompt. Fake or dummy records will **never** appear.
+- **Clean Starting State**: Starts with **0 records** and displays a clean empty state with an upload prompt. Fake or dummy records will **never** appear.
 
 ---
 
@@ -56,14 +66,16 @@ A complete, high-performance office management system specially built to store, 
 
 ---
 
-## 🚀 How to Run
+## 🚀 How to Run (Safe Place Mode)
 
-### Method 1: Double-Click (Recommended)
-Double-click **`START_KHODAL_OFFICE.bat`** in `D:\Khodal_info`. It starts the server and opens your browser automatically at `http://localhost:8000`.
+### Method 1: Double-Click Desktop Shortcut (Recommended)
+1. Run **`CREATE_DESKTOP_SHORTCUT.bat`** once to create the **"Khodal Office Data Hub"** icon on your Desktop.
+2. Double-click the shortcut anytime to launch the safe place database server. Your browser will automatically open to `http://localhost:8000`.
 
-To create a desktop shortcut, run **`CREATE_DESKTOP_SHORTCUT.bat`**.
+### Method 2: Batch Launcher
+Double-click **`START_KHODAL_OFFICE.bat`** in `D:\Khodal_info`.
 
-### Method 2: Command Line
+### Method 3: Command Line
 ```powershell
 python app.py
 ```
