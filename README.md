@@ -1,56 +1,67 @@
 # 🏢 Khodal Office Data Hub — Daily Work Progress & Search
 
-A complete, high-performance office management system specially built to store and track daily work data across **4 Divided Field Categories**:
+A complete, high-performance office management system specially built to store, track, and search daily client work data across **4 Divided Service Categories**:
 
-1. 🪪 **Demo 1: UC Aadhaar** (`Date`, `SID Number`, `Name`, `Status`, `Total Amt`, `Fee`, `Mobile/Others`, `Remarks`)
-2. 🌐 **Demo 2: Aadhaar Online** (`Date`, `Name`, `SRN Number`, `Mobile No`, `Remarks`, `Status`)
-3. 💳 **Demo 3: PAN Card** (`Date`, `Name`, `PAN Change / New`, `Mobile Number`, `Remarks`, `Status`)
-4. 🏥 **Demo 4: Ayushman / Ration Card** (`Date`, `Ration / Ayushman No`, `Name`, `Mobile No`, `Remarks`, `Status`)
+1. 🪪 **Category 1: UC Aadhaar** (`Date`, `SID Number`, `Name`, `Status`, `Total Amt`, `Fee`, `Mobile/Others`, `Remarks`)
+2. 🌐 **Category 2: Aadhaar Online** (`Date`, `Name`, `SRN Number`, `Mobile No`, `Remarks`, `Status`)
+3. 💳 **Category 3: PAN Card** (`Date`, `Name`, `PAN Change / New`, `Mobile Number`, `Remarks`, `Status`)
+4. 🏥 **Category 4: Ayushman / Ration Card** (`Date`, `Ration / Ayushman No`, `Name`, `Mobile No`, `Remarks`, `Status`)
+
+---
+
+## 🌟 Key Architecture & Data Rules
+
+### 🚫 Zero Static / Fake Data Policy
+- **No Mock or Demo Data**: All static/fake sample records have been completely removed from the project folder.
+- **Pure Excel Data Source**: Records are only taken from Excel (`.xlsx`, `.xls`) or CSV (`.csv`) files uploaded by the user directly through the browser.
+- **Clean State on Cache Clearing**: When browser history, cookies, or local cache are cleared, the application starts with **0 records** and displays a clean empty state with an upload prompt. Fake or dummy records will **never** appear.
 
 ---
 
 ## 🌟 Key Features
 
-### 1. 🗂️ Field-Divided Service Tabs
-- **Instant Tab Switching**: Switch seamlessly between **All Services**, **UC Aadhaar**, **Aadhaar Online**, **PAN Card**, and **Ayushman Card**.
-- **Dynamic Columns**: Each tab shows only the columns relevant to that specific service (e.g. *SID Number & Fee* for UC Aadhaar, *SRN Number* for Aadhaar Online, *PAN Change/New* for PAN Card, *Ration Card No* for Ayushman).
-- **Service Count Badges**: Shows live counts for each service at a glance.
+### 1. 📤 Browser Excel Upload (.xlsx / .xls / .csv)
+- **Automatic Service Detection**: Upload single or multi-sheet Excel files. The system automatically inspects sheet names and column headers to assign records to UC Aadhaar, Aadhaar Online, PAN Card, or Ayushman Card.
+- **Header & Date Parsing**: Automatically parses various date formats (DD-MM-YYYY, DD/MM/YYYY, ISO, Excel numeric dates) and extracts client contact numbers.
+- **Original File Preservation**: Uploaded files and raw binary blobs are permanently stored in SQLite (`data/khodal_office.db`) and `uploads/`.
 
-### 2. 📅 Daily Progress Tracker
-- **Date Selector**: Check progress for **Today**, **Yesterday**, or choose any specific day (e.g., `2026-10-30`, `2026-10-28`).
+### 2. 🗂️ Field-Divided Service Tabs
+- **Instant Tab Switching**: Seamlessly switch between **All Services**, **UC Aadhaar**, **Aadhaar Online**, **PAN Card**, and **Ayushman Card**.
+- **Dynamic Columns**: Each tab shows only the columns relevant to that specific category (e.g. *SID Number & Fee* for UC Aadhaar, *SRN Number* for Aadhaar Online, *PAN Change/New* for PAN Card, *Ration Card No* for Ayushman).
+- **Live Badges**: Real-time counter badges on each tab reflect current loaded records.
+
+### 3. 📅 Daily Progress Tracker
+- **Date Selector**: View progress for **Today**, **Yesterday**, **All Dates**, or choose any specific calendar day.
 - **Live Progress Metric Cards**:
-  - 📋 **Total Applications** (daily & all-time)
+  - 📋 **Total Applications** (daily & total)
   - 🟢 **Completed Work** (with % completion rate)
   - 🟡 **In-Process / Active Applications**
   - 🔴 **Baki / Action Required** (tracks dues like `200 BAKI`, `HOF THI BAKI`, `NOT RECIV`)
   - 💰 **Total Revenue / Fee Collected** (e.g. `₹48,950`)
-- **1-Click Status Toggling**: Click any status pill (e.g. `InProcess`) to immediately toggle it to `Completed`!
+- **1-Click Status Toggling**: Click any status pill (e.g. `InProgress`) to toggle it to `Completed` or `Rejected` directly from the table.
 
-### 3. 🔍 Multi-Field Live Search
+### 4. 🔍 Multi-Field Live Search
 - 👤 **Search by Name**: Live matching as you type (e.g. `Khunt`, `Patel`, `Jadwani`, `Sharma`).
-- 📱 **Search by Mobile No**: Instant digit matching (e.g. `81283`, `9328318876`, `9099588811`).
-- 🔢 **Search by ID Number**: Fast search across **SID Numbers**, **SRN Numbers**, and **Ration / Ayushman Card Numbers** (e.g. `S131114`, `PAJYXBXFU`).
+- 📱 **Search by Mobile No**: Instant digit matching (e.g. `98250`, `9328318876`).
+- 🔢 **Search by ID Number**: Fast search across **SID Numbers**, **SRN Numbers**, and **Ration / Ayushman Card Numbers**.
 - 🏷️ **Quick Filters**: One-click filter for **Completed Only**, **In-Process Only**, or **Baki Cases Only**.
 - 💬 **Direct WhatsApp Web**: Instant green chat button next to every customer phone number (`https://wa.me/91<number>`).
 
-### 4. 📤 Daily File Uploads (Excel / CSV)
-- **Automatic Service Detection**: Automatically identifies which service the file belongs to based on column headers.
-- **Handles Date Divider Rows**: Automatically carries forward dates from section headers (e.g. `2026-10-01,,,,,,`).
-- **Preserves Original Files**: Saves uploaded files in `uploads/` for permanent backup.
-
 ### 5. 📥 One-Click Export
-- **Export to Excel (`.xlsx`)**: Downloads a formatted spreadsheet organized according to the selected service.
+- **Export to Excel (`.xlsx`)**: Downloads a formatted spreadsheet organized according to the selected service category.
 - **Export to CSV**: Quick lightweight text export.
 
 ### 6. 🌐 Office Network Sharing
-- Connect from any computer, tablet, or phone on the same office Wi-Fi at `http://<your-lan-ip>:8000`.
+- Connect from any computer, tablet, or mobile phone on the same office Wi-Fi at `http://<your-lan-ip>:8000`.
 
 ---
 
 ## 🚀 How to Run
 
 ### Method 1: Double-Click (Recommended)
-Double-click **`run.bat`** in `D:\Khodal_info`. It will launch the server and open your browser automatically.
+Double-click **`START_KHODAL_OFFICE.bat`** in `D:\Khodal_info`. It starts the server and opens your browser automatically at `http://localhost:8000`.
+
+To create a desktop shortcut, run **`CREATE_DESKTOP_SHORTCUT.bat`**.
 
 ### Method 2: Command Line
 ```powershell
@@ -62,25 +73,25 @@ Open your browser to:
 
 ---
 
-## 🔐 Master Users & Database-Only Storage
+## 🔐 Master Users & Authentication
 
-All user credentials, authentication sessions, and office records are permanently stored in the **SQLite Database (`data/khodal_office.db`)**, eliminating browser storage dependency:
+All master user credentials and authentication sessions are permanently stored in the **SQLite Database (`data/khodal_office.db`)**:
 
-- **Built-in Master Users**:
+- **Default Master Users**:
   - `manish` &mdash; Password: `manish@7575`
   - `admin` &mdash; Password: `admin@7575`
 - **Dynamic Master User Creation**: Click the **Master Users** button in the top navigation bar to view all active master users or add new master users with custom usernames and passwords.
-- **Database Session Tokens**: All login sessions are verified server-side against the `user_sessions` table in SQLite; no user passwords or record data are stored in browser `localStorage`.
-- **Permanent Data Safety**: Clearing browser history, cache, or cookies will never delete your user data or office records.
+- **Secure Sessions**: Login sessions are authenticated via database session tokens; no user passwords or sensitive record data are exposed in browser storage.
 
 ---
 
-## 📁 Pre-Loaded Real Office Data
+## 📁 Excel Upload & Templates
 
-All 4 demo files provided have already been loaded into your database:
-- `demo1_ucaadhar.csv` &mdash; **380 UC Aadhaar Records**
-- `demo2_aadhar_online.csv` &mdash; **147 Aadhaar Online Records**
-- `demo3_pancard.csv` &mdash; **41 PAN Card Records**
-- `demo4_aayushman.csv` &mdash; **49 Ayushman Card Records**
+To import data, click the **Upload Office File** button in the header or in the table empty state, select your Excel spreadsheet (`.xlsx`, `.xls`, or `.csv`), and confirm.
 
-Total: **617 pre-loaded real records** ready to search and track!
+Standard templates are available in the `templates/` directory and can also be downloaded directly from the application:
+- `Khodal_Office_Master_Template.xlsx` (Multi-sheet: UC Aadhaar, Aadhaar Online, PAN Card, Ayushman Card)
+- `Template_1_UC_Aadhaar.xlsx`
+- `Template_2_Aadhaar_Online.xlsx`
+- `Template_3_PAN_Card.xlsx`
+- `Template_4_Ayushman_Card.xlsx`
