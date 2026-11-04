@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  khodal-office-hub:
+    build: .
+    container_name: khodal_office_hub
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      - DATA_DIR=/app/data
+      - ENVIRONMENT=production
+    volumes:
+      - khodal_office_data:/app/data
+
+volumes:
+  khodal_office_data:
+    driver: local

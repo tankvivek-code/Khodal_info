@@ -9,10 +9,53 @@ A complete, high-performance office management system specially built to store, 
 
 ---
 
-## 🛡️ Safe Place Architecture (No Data Loss on History Clear)
+## 🌐 Live & Production Deployment
+
+When deployed to production (live on the internet):
+- **Central Cloud Database**: The application runs on your live server or cloud host. All client records and uploaded Excel files are stored on that server's persistent disk storage (`data/khodal_office.db` and `uploads/`).
+- **All Clients Share the Same Data**: Anyone who visits your live URL (`https://your-domain.com`) from Chrome, Edge, Safari, iPhone, Android, or desktop connects to the **same live database**.
+- **No Browser History Vulnerability**: A client clearing browser history on their phone or laptop has **zero impact** on the server's database. The data is safely hosted on the cloud server.
+
+### 🚀 Production Deployment Options
+
+#### Option 1: Docker Compose on Cloud VPS (Recommended)
+Deploy on any Linux Cloud VPS (DigitalOcean, AWS EC2, Linode, Hetzner, Contabo):
+```bash
+# 1. Clone repository
+git clone <your-repo-url> khodal-info
+cd khodal-info
+
+# 2. Start container with permanent volume
+docker compose up -d
+```
+All records are permanently stored in the `khodal_office_data` Docker volume. The container automatically restarts if the server reboots.
+
+#### Option 2: Render.com (Web Service)
+1. Link your GitHub repository to Render.
+2. In the Render Dashboard under **Disks**, add a **Persistent Disk**:
+   - **Name:** `khodal-data`
+   - **Mount Path:** `/var/data`
+   - **Size:** `1 GB` (or more)
+3. Under **Environment Variables**, add:
+   - `DATA_DIR` = `/var/data`
+   - `PYTHON_VERSION` = `3.12.0`
+4. Start Command: `uvicorn app:app --host 0.0.0.0 --port $PORT`
+
+#### Option 3: Local Office Server with Free Public HTTPS (Cloudflare Tunnel)
+Keep your office PC running as the server and give it a secure public HTTPS link for free:
+1. Run `START_KHODAL_OFFICE.bat` on the office computer.
+2. Run Cloudflare Tunnel:
+   ```bash
+   cloudflared tunnel --url http://localhost:8000
+   ```
+3. You get a public HTTPS link (e.g. `https://khodal.yourdomain.com`) accessible from any browser or phone anywhere in the world.
+
+---
+
+## 🛡️ Local Safe Place Architecture
 
 ### 🟢 SQLite Hard Drive Database (`data/khodal_office.db`)
-- **Permanent Local Storage**: All uploaded office records and client files are saved to the **SQLite Database file on your local disk (`D:\Khodal_info\data\khodal_office.db`)** and `uploads/` folder.
+- **Permanent Local Storage**: All uploaded office records and client files are saved to the **SQLite Database file on your local hard drive (`D:\Khodal_info\data\khodal_office.db`)** and `uploads/` folder.
 - **Immune to Browser History Cleaning**: Clearing your browser history, cache, or cookies in Google Chrome, Microsoft Edge, or Firefox will **NEVER** delete your uploaded office data because the database lives on your hard drive, not in temporary browser storage.
 - **Cross-Protocol Auto-Detection**: Whether you open the app via `http://localhost:8000` or double-click `index.html` (`file:///`), the application automatically links to the local SQLite database server.
 - **Multi-Tiered Backup & Recovery**: Records are also mirrored to `data/records.js` on disk, persistent IndexedDB, and rolling JSON backups.
@@ -66,29 +109,19 @@ A complete, high-performance office management system specially built to store, 
 
 ---
 
-## 🚀 How to Run (Permanent Safe Place Mode)
+## 🚀 How to Run Locally
 
-### Method 1: Automatic Windows Startup (Best — Run Always in Background)
-Double-click **`INSTALL_AUTO_STARTUP.bat`** once.
-- Whenever your computer turns on, the safe place database server automatically starts silently in the background!
-- You can open your browser to `http://localhost:8000` anytime and your database will always be active.
-- Clearing browser history will **NEVER** delete your data!
-
-### Method 2: Double-Click Desktop Shortcut
-1. Run **`CREATE_DESKTOP_SHORTCUT.bat`** to put the **"Khodal Office Data Hub"** icon on your Desktop.
+### Method 1: Double-Click Desktop Shortcut (Recommended)
+1. Run **`CREATE_DESKTOP_SHORTCUT.bat`** once to create the **"Khodal Office Data Hub"** icon on your Desktop.
 2. Double-click the shortcut anytime to launch the safe place database server. Your browser will automatically open to `http://localhost:8000`.
 
-### Method 3: Batch Launcher
+### Method 2: Batch Launcher
 Double-click **`START_KHODAL_OFFICE.bat`** in `D:\Khodal_info`.
-To stop the server, double-click **`STOP_KHODAL_OFFICE.bat`**.
 
-### Method 4: Command Line
+### Method 3: Command Line
 ```powershell
 python app.py
 ```
-Open your browser to:
-- **Local:** [http://localhost:8000](http://localhost:8000)
-- **Office LAN:** `http://<your-lan-ip>:8000`
 
 ---
 
