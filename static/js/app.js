@@ -293,6 +293,12 @@ const isGitHubPages = window.location.hostname.includes("github.io");
 const isFileProtocol = window.location.protocol === "file:";
 
 const DEFAULT_BACKEND_URL = "http://localhost:8000";
+const CUSTOM_CLOUD_URL_KEY = "khodal_custom_cloud_url";
+let customCloudUrl = "";
+try {
+    customCloudUrl = localStorage.getItem(CUSTOM_CLOUD_URL_KEY) || "";
+} catch (e) {}
+
 
 let API_BASE = "";
 
@@ -333,56 +339,50 @@ function apiUrl(path) {
 // Automatic detection of SQLite backend server (safe place on disk)
 
 async function detectApiBase() {
-
-    if (!isFileProtocol) {
-
+    // 1. Check custom Cloud Server URL if provided (for GitHub Pages live deployment)
+    if (customCloudUrl) {
         try {
-
             const controller = new AbortController();
-
-            const to = setTimeout(() => controller.abort(), 1200);
-
-            const res = await fetch("/api/info", { signal: controller.signal });
-
+            const to = setTimeout(() => controller.abort(), 3500);
+            const res = await fetch(`${customCloudUrl}/api/info`, { signal: controller.signal });
             clearTimeout(to);
-
             if (res.ok) {
-
-                API_BASE = "";
-
+                API_BASE = customCloudUrl;
                 return true;
-
             }
-
         } catch (e) {}
-
     }
 
-    try {
+    // 2. Check same-origin API (if hosted full-stack or on localhost)
+    if (!isFileProtocol && !isGitHubPages) {
+        try {
+            const controller = new AbortController();
+            const to = setTimeout(() => controller.abort(), 1200);
+            const res = await fetch("/api/info", { signal: controller.signal });
+            clearTimeout(to);
+            if (res.ok) {
+                API_BASE = "";
+                return true;
+            }
+        } catch (e) {}
+    }
 
-        const controller = new AbortController();
-
-        const to = setTimeout(() => controller.abort(), 1200);
-
-        const res = await fetch(`${DEFAULT_BACKEND_URL}/api/info`, { signal: controller.signal });
-
-        clearTimeout(to);
-
-        if (res.ok) {
-
-            API_BASE = DEFAULT_BACKEND_URL;
-
-            return true;
-
-        }
-
-    } catch (e) {}
+    // 3. Check localhost backend (file:/// or local development)
+    if (isFileProtocol || window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
+        try {
+            const controller = new AbortController();
+            const to = setTimeout(() => controller.abort(), 1200);
+            const res = await fetch(`${DEFAULT_BACKEND_URL}/api/info`, { signal: controller.signal });
+            clearTimeout(to);
+            if (res.ok) {
+                API_BASE = DEFAULT_BACKEND_URL;
+                return true;
+            }
+        } catch (e) {}
+    }
 
     return false;
-
 }
-
-// IndexedDB Helper for resilient persistent client-side storage
 
 function openKhodalIDB() {
 
@@ -6002,6 +6002,81 @@ async function handleDeleteMasterUser(userId, username) {
 }
 
 // Initialize application after all components and stores are defined
+
+
+function openCloudDbModal() {
+    const statusBox = document.getElementById("cloud-db-status-box");
+    const input = document.getElementById("custom-cloud-url-input");
+    if (input) input.value = customCloudUrl || "";
+    
+    if (statusBox) {
+        if (!isStaticMode) {
+            statusBox.className = "p-3.5 rounded-xl border border-emerald-300 bg-emerald-50 text-xs text-emerald-900";
+            statusBox.innerHTML = `
+                <div class="flex items-center gap-2 font-bold text-emerald-800">
+                    <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <span>🟢 Safe Place Active: Connected to Database Server</span>
+                </div>
+                <div class="text-[11px] text-emerald-700 mt-1 font-mono">
+                    Active API: ${API_BASE || window.location.origin}
+                </div>
+                <div class="text-[11px] text-emerald-800 mt-1">
+                    All records are saved directly to database. Clearing browser history will NOT delete your data!
+                </div>
+            `;
+        } else {
+            statusBox.className = "p-3.5 rounded-xl border border-amber-300 bg-amber-50 text-xs text-amber-900";
+            statusBox.innerHTML = `
+                <div class="flex items-center gap-2 font-bold text-amber-900">
+                    <span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+                    <span>⚠️ Temporary Browser Mode (${staticRecords.length} records in browser memory)</span>
+                </div>
+                <div class="text-[11px] text-amber-800 mt-1">
+                    Running in client-side static mode. Clearing browser history will wipe browser storage. Connect a Cloud Backend or use START_KHODAL_OFFICE.bat on your PC for a permanent Safe Place!
+                </div>
+            `;
+        }
+    }
+    openModal("modal-cloud-db");
+    refreshIcons();
+}
+
+async function saveCustomCloudUrl() {
+    const input = document.getElementById("custom-cloud-url-input");
+    let val = (input ? input.value : "").trim();
+    if (val && !val.startsWith("http://") && !val.startsWith("https://")) {
+        val = "https://" + val;
+    }
+    if (val.endsWith("/")) {
+        val = val.slice(0, -1);
+    }
+    customCloudUrl = val;
+    try {
+        localStorage.setItem(CUSTOM_CLOUD_URL_KEY, customCloudUrl);
+    } catch (e) {}
+    
+    if (!customCloudUrl) {
+        showToast("Cleared Cloud URL. Switching to default auto-detection...", "info");
+        await initDataStore();
+        closeModal("modal-cloud-db");
+        return;
+    }
+
+    showToast("Connecting to cloud database server...", "info");
+    const ok = await detectApiBase();
+    if (ok) {
+        isStaticMode = false;
+        showToast("🟢 Connected to Cloud Database Server successfully!", "success");
+        updateDatabaseStatusBadge();
+        closeModal("modal-cloud-db");
+        await syncOfflineRecordsToServer();
+        await loadDailyProgress();
+        await fetchRecords(1);
+    } else {
+        showToast("⚠️ Could not connect to that server. Please verify the URL.", "error");
+    }
+}
+
 
 async function boot() {
 
