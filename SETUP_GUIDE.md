@@ -143,3 +143,4 @@ Click the **Master Users** button in the top navigation bar to view all active m
 * **`CREATE_DESKTOP_SHORTCUT.bat`**: Re-creates the Desktop shortcut if deleted.
 * **`data/khodal_office.db`**: The permanent SQLite database file containing all your records.
 * **`templates/`**: Folder containing master Excel templates for data entry and upload.
+
