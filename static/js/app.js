@@ -310,6 +310,8 @@ let isStaticMode = true;
 
 let staticRecords = [];
 
+let serverDbStatus = null;
+
 const STORAGE_KEY = "khodal_records_store_v8";
 
 const FILES_STORAGE_KEY = "khodal_files_list_v8";
@@ -847,7 +849,10 @@ setInterval(async () => {
 
             isStaticMode = false;
 
-            showToast("🟢 Connected to SQLite Disk Database! Data is now safe on disk.", "success");
+            await fetchSystemInfo();
+
+            const isMongo = serverDbStatus && (serverDbStatus.engine === "mongodb" || serverDbStatus.mongodb_connected);
+            showToast(isMongo ? "🟢 Connected to MongoDB Atlas Cloud Database!" : "🟢 Connected to SQLite Disk Database! Data is now safe on disk.", "success");
 
             updateDatabaseStatusBadge();
 
@@ -873,9 +878,12 @@ async function checkServerConnection() {
 
         isStaticMode = false;
 
-        updateDatabaseStatusBadge();
+        await fetchSystemInfo();
 
-        showToast("🟢 Connected to SQLite Disk Database! Safe Place active on disk.", "success");
+        const isMongo = serverDbStatus && (serverDbStatus.engine === "mongodb" || serverDbStatus.mongodb_connected);
+        showToast(isMongo ? "🟢 Connected to MongoDB Atlas Cloud Database!" : "🟢 Connected to SQLite Disk Database! Safe Place active on disk.", "success");
+
+        updateDatabaseStatusBadge();
 
         await syncOfflineRecordsToServer();
 
@@ -1067,6 +1075,12 @@ async function fetchSystemInfo() {
 
             if (shareBox) shareBox.classList.remove("hidden");
 
+        }
+
+        if (data && data.database) {
+            serverDbStatus = data.database;
+            updateDatabaseStatusBadge();
+            updateMongoModalUI();
         }
 
     } catch (err) {
@@ -5464,14 +5478,26 @@ function openUploadModal() {
     if (noticeEl) {
         noticeEl.classList.remove("hidden");
         if (!isStaticMode) {
-            noticeEl.className = "p-3 rounded-xl bg-emerald-50 border border-emerald-300 text-xs text-emerald-900 flex items-center gap-2.5 shadow-2xs";
-            noticeEl.innerHTML = `
-                <i data-lucide="shield-check" class="w-5 h-5 text-emerald-600 shrink-0"></i>
-                <div>
-                    <strong class="font-bold text-emerald-950">Target: Permanent Local Database (khodal_office.db)</strong>
-                    <div class="text-[11px] text-emerald-800">Your uploaded Excel data will be written directly into SQLite on your computer disk (D: drive). Stored permanently and immune to browser history clears!</div>
-                </div>
-            `;
+            const isMongo = serverDbStatus && (serverDbStatus.engine === "mongodb" || serverDbStatus.mongodb_connected);
+            if (isMongo) {
+                noticeEl.className = "p-3 rounded-xl bg-teal-50 border border-teal-300 text-xs text-teal-900 flex items-center gap-2.5 shadow-2xs";
+                noticeEl.innerHTML = `
+                    <i data-lucide="cloud" class="w-5 h-5 text-teal-600 shrink-0"></i>
+                    <div>
+                        <strong class="font-bold text-teal-950">Target: MongoDB Atlas Cloud Database (Cluster0)</strong>
+                        <div class="text-[11px] text-teal-800">Your uploaded Excel data and client records are stored directly in MongoDB Atlas cloud. Immediately synced and accessible from all connected devices!</div>
+                    </div>
+                `;
+            } else {
+                noticeEl.className = "p-3 rounded-xl bg-emerald-50 border border-emerald-300 text-xs text-emerald-900 flex items-center gap-2.5 shadow-2xs";
+                noticeEl.innerHTML = `
+                    <i data-lucide="shield-check" class="w-5 h-5 text-emerald-600 shrink-0"></i>
+                    <div>
+                        <strong class="font-bold text-emerald-950">Target: Permanent Local Database (khodal_office.db)</strong>
+                        <div class="text-[11px] text-emerald-800">Your uploaded Excel data will be written directly into SQLite on your computer disk (D: drive). Stored permanently and immune to browser history clears!</div>
+                    </div>
+                `;
+            }
         } else {
             noticeEl.className = "p-3 rounded-xl bg-amber-50 border border-amber-300 text-xs text-amber-900 flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-2xs";
             noticeEl.innerHTML = `
@@ -5574,30 +5600,60 @@ function updateDatabaseStatusBadge() {
                         !window.location.hostname.startsWith("192.168.");
 
     if (!isStaticMode) {
-        const storeLabel = isLiveCloud ? "Live Production Cloud" : "data/khodal_office.db";
-        const pathLabel = isLiveCloud ? "Live Cloud Host" : "Local Disk (D: Drive)";
-        textEl.innerHTML = `
-            <div class="flex flex-wrap items-center justify-between gap-2 w-full py-0.5">
-                <div class="flex items-center gap-2 flex-wrap">
-                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
-                        🟢 LOCAL SAFE PLACE ACTIVE
-                    </span>
-                    <span class="text-xs text-emerald-950 font-semibold">
-                        Permanent SQLite Database (<code>${storeLabel}</code>). Saved on hard drive — immune to browser history clears.
-                    </span>
-                </div>
-                <div class="flex items-center gap-2 flex-wrap">
-                    <button onclick="openLanDevicesModal()" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition shadow-2xs flex items-center gap-1 cursor-pointer" title="Connect Phones & Other Devices via Wi-Fi">
-                        <i data-lucide="smartphone" class="w-3.5 h-3.5"></i> Connect Other Devices
-                    </button>
-                    <div class="text-[11px] font-mono text-emerald-800 bg-emerald-100/70 px-2.5 py-0.5 rounded font-bold hidden sm:inline-block">
-                        Store: ${pathLabel}
+        const isMongo = serverDbStatus && (serverDbStatus.engine === "mongodb" || serverDbStatus.mongodb_connected);
+        if (isMongo) {
+            textEl.innerHTML = `
+                <div class="flex flex-wrap items-center justify-between gap-2 w-full py-0.5">
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-teal-100 text-teal-900 border border-teal-300">
+                            🟢 MONGODB ATLAS CLOUD DB ACTIVE
+                        </span>
+                        <span class="text-xs text-teal-950 font-semibold">
+                            Connected to MongoDB Atlas (<code>cluster0.nl4cir6.mongodb.net</code>). All client records & Excel uploads sync across all devices in real-time.
+                        </span>
+                    </div>
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <button onclick="openLanDevicesModal()" class="px-2.5 py-1 bg-teal-700 hover:bg-teal-800 text-white rounded-lg text-xs font-bold transition shadow-2xs flex items-center gap-1 cursor-pointer" title="Database & Cloud Settings">
+                            <i data-lucide="cloud" class="w-3.5 h-3.5"></i> Cloud DB Settings
+                        </button>
+                        <div class="text-[11px] font-mono text-teal-800 bg-teal-100/70 px-2.5 py-0.5 rounded font-bold hidden sm:inline-block">
+                            Engine: MongoDB Atlas
+                        </div>
                     </div>
                 </div>
-            </div>
-        `;
-        if (banner) {
-            banner.className = "mb-4 p-3 rounded-xl bg-emerald-50 border border-emerald-300 text-xs text-emerald-900 transition shadow-2xs";
+            `;
+            if (banner) {
+                banner.className = "mb-4 p-3 rounded-xl bg-teal-50 border border-teal-300 text-xs text-teal-900 transition shadow-2xs";
+            }
+        } else {
+            const storeLabel = isLiveCloud ? "Live Production Cloud" : "data/khodal_office.db";
+            const pathLabel = isLiveCloud ? "Live Cloud Host" : "Local Disk (D: Drive)";
+            textEl.innerHTML = `
+                <div class="flex flex-wrap items-center justify-between gap-2 w-full py-0.5">
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                            🟢 LOCAL SAFE PLACE ACTIVE
+                        </span>
+                        <span class="text-xs text-emerald-950 font-semibold">
+                            Permanent SQLite Database (<code>${storeLabel}</code>). Saved on hard drive — immune to browser history clears.
+                        </span>
+                    </div>
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <button onclick="openLanDevicesModal()" class="px-2.5 py-1 bg-teal-700 hover:bg-teal-800 text-white rounded-lg text-xs font-bold transition shadow-2xs flex items-center gap-1 cursor-pointer" title="Connect MongoDB Atlas Cloud Database">
+                            <i data-lucide="database" class="w-3.5 h-3.5"></i> Activate MongoDB Cloud
+                        </button>
+                        <button onclick="openLanDevicesModal()" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition shadow-2xs flex items-center gap-1 cursor-pointer" title="Connect Phones & Other Devices via Wi-Fi">
+                            <i data-lucide="smartphone" class="w-3.5 h-3.5"></i> Connect Other Devices
+                        </button>
+                        <div class="text-[11px] font-mono text-emerald-800 bg-emerald-100/70 px-2.5 py-0.5 rounded font-bold hidden sm:inline-block">
+                            Store: ${pathLabel}
+                        </div>
+                    </div>
+                </div>
+            `;
+            if (banner) {
+                banner.className = "mb-4 p-3 rounded-xl bg-emerald-50 border border-emerald-300 text-xs text-emerald-900 transition shadow-2xs";
+            }
         }
         checkAndPromptBrowserSync();
     } else {
@@ -6718,7 +6774,22 @@ function openLanDevicesModal() {
     }
 
     if (statusBox) {
-        if (!isStaticMode) {
+        const isMongo = serverDbStatus && (serverDbStatus.engine === "mongodb" || serverDbStatus.mongodb_connected);
+        if (!isStaticMode && isMongo) {
+            statusBox.className = "p-3 rounded-xl border border-teal-300 bg-teal-50 text-xs text-teal-900";
+            statusBox.innerHTML = `
+                <div class="flex items-center gap-2 font-bold text-teal-900">
+                    <span class="w-2.5 h-2.5 rounded-full bg-teal-500 animate-pulse"></span>
+                    <span>🟢 Cloud Safe Place Active: MongoDB Atlas (Cluster0)</span>
+                </div>
+                <div class="text-[11px] text-teal-800 mt-1 font-mono">
+                    Cluster: cluster0.nl4cir6.mongodb.net | DB: khodal_office
+                </div>
+                <div class="text-[11px] text-teal-900 mt-1">
+                    All client records and uploaded Excel sheets are permanently stored in MongoDB Atlas cloud. Multi-device access from phones and laptops is fully active in real-time.
+                </div>
+            `;
+        } else if (!isStaticMode) {
             statusBox.className = "p-3 rounded-xl border border-emerald-300 bg-emerald-50 text-xs text-emerald-900";
             statusBox.innerHTML = `
                 <div class="flex items-center gap-2 font-bold text-emerald-800">
@@ -6729,7 +6800,7 @@ function openLanDevicesModal() {
                     File: D:\\Khodal_info\\data\\khodal_office.db
                 </div>
                 <div class="text-[11px] text-emerald-800 mt-1">
-                    All client records and uploaded Excel sheets are permanently stored on this computer. Clearing browser history on this PC or any phone will NEVER delete your data.
+                    All client records and uploaded Excel sheets are permanently stored on this computer. Enter your MongoDB Atlas password below to activate cloud synchronization.
                 </div>
             `;
         } else {
@@ -6747,8 +6818,128 @@ function openLanDevicesModal() {
     }
 
     renderLanQrCode(effectiveLanUrl);
+    updateMongoModalUI();
     refreshIcons();
 }
+
+function updateMongoModalUI() {
+    const badge = document.getElementById("mongo-badge-status");
+    const formContainer = document.getElementById("mongo-config-form");
+    if (!badge || !formContainer) return;
+
+    const isMongo = serverDbStatus && (serverDbStatus.engine === "mongodb" || serverDbStatus.mongodb_connected);
+    if (isMongo) {
+        badge.className = "px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-900 border border-emerald-300";
+        badge.textContent = "🟢 Cloud Active";
+        formContainer.innerHTML = `
+            <div class="p-2.5 bg-emerald-100/70 border border-emerald-300 rounded-xl text-emerald-950 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <span class="flex items-center gap-1.5 font-bold">
+                    <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-700"></i> Connected to MongoDB Atlas Cluster0 (khodal_office)
+                </span>
+                <button onclick="showChangeMongoPasswordForm()" class="px-2.5 py-1 bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-300 rounded-lg text-[11px] font-bold transition cursor-pointer self-start sm:self-auto">
+                    Change Password
+                </button>
+            </div>
+            <p class="text-[10px] text-teal-800">All data operations (client records, uploaded Excel files, users) are saving directly into MongoDB Atlas.</p>
+        `;
+    } else {
+        badge.className = "px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300";
+        badge.textContent = "Awaiting Password";
+        formContainer.innerHTML = `
+            <label class="block text-[11px] font-bold text-teal-950">Enter MongoDB Database Password (user: tankvivek65_db_user):</label>
+            <div class="flex flex-col sm:flex-row gap-2">
+                <input type="password" id="mongo-password-input" placeholder="Enter your MongoDB Atlas password"
+                    class="flex-1 px-3 py-1.5 text-xs bg-white border border-teal-300 rounded-lg focus:ring-2 focus:ring-teal-500 font-mono text-slate-800">
+                <button id="mongo-submit-btn" onclick="submitMongoPassword()" class="px-4 py-1.5 bg-teal-700 hover:bg-teal-800 text-white rounded-lg text-xs font-bold transition cursor-pointer shadow-2xs flex items-center justify-center gap-1">
+                    <i data-lucide="check" class="w-3.5 h-3.5"></i> Connect MongoDB
+                </button>
+            </div>
+            <p class="text-[10px] text-teal-700">Password is stored safely in <code>.env</code> on your computer.</p>
+        `;
+    }
+    refreshIcons();
+}
+
+function showChangeMongoPasswordForm() {
+    const formContainer = document.getElementById("mongo-config-form");
+    if (!formContainer) return;
+    formContainer.innerHTML = `
+        <label class="block text-[11px] font-bold text-teal-950">Update MongoDB Database Password (user: tankvivek65_db_user):</label>
+        <div class="flex flex-col sm:flex-row gap-2">
+            <input type="password" id="mongo-password-input" placeholder="Enter new MongoDB Atlas password"
+                class="flex-1 px-3 py-1.5 text-xs bg-white border border-teal-300 rounded-lg focus:ring-2 focus:ring-teal-500 font-mono text-slate-800">
+            <button id="mongo-submit-btn" onclick="submitMongoPassword()" class="px-4 py-1.5 bg-teal-700 hover:bg-teal-800 text-white rounded-lg text-xs font-bold transition cursor-pointer shadow-2xs flex items-center justify-center gap-1">
+                <i data-lucide="check" class="w-3.5 h-3.5"></i> Update Password
+            </button>
+        </div>
+        <div class="flex items-center justify-between text-[10px] text-teal-700">
+            <span>Password is stored safely in <code>.env</code> on your computer.</span>
+            <button onclick="updateMongoModalUI()" class="text-slate-600 hover:underline cursor-pointer">Cancel</button>
+        </div>
+    `;
+    refreshIcons();
+}
+
+async function submitMongoPassword() {
+    const input = document.getElementById("mongo-password-input");
+    const btn = document.getElementById("mongo-submit-btn");
+    const pwd = (input ? input.value : "").trim();
+    if (!pwd) {
+        showToast("Please enter your MongoDB Atlas password.", "warning");
+        if (input) input.focus();
+        return;
+    }
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<span class="inline-block animate-spin mr-1">⌛</span> Connecting...`;
+    }
+    try {
+        const res = await fetch(apiUrl("/api/database/config-mongo"), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ password: pwd })
+        });
+        const data = await res.json();
+        if (res.ok && data.status === "success") {
+            serverDbStatus = data.database;
+            showToast("🟢 Successfully connected to MongoDB Atlas Cloud Database!", "success");
+            updateDatabaseStatusBadge();
+            updateMongoModalUI();
+            const statusBox = document.getElementById("cloud-db-status-box");
+            if (statusBox) {
+                statusBox.className = "p-3 rounded-xl border border-teal-300 bg-teal-50 text-xs text-teal-900";
+                statusBox.innerHTML = `
+                    <div class="flex items-center gap-2 font-bold text-teal-900">
+                        <span class="w-2.5 h-2.5 rounded-full bg-teal-500 animate-pulse"></span>
+                        <span>🟢 Cloud Safe Place Active: MongoDB Atlas (Cluster0)</span>
+                    </div>
+                    <div class="text-[11px] text-teal-800 mt-1 font-mono">
+                        Cluster: cluster0.nl4cir6.mongodb.net | DB: khodal_office
+                    </div>
+                    <div class="text-[11px] text-teal-900 mt-1">
+                        All records and uploaded files are synced into MongoDB Atlas in the cloud. Every device running this app has immediate real-time access.
+                    </div>
+                `;
+            }
+            await loadDailyProgress();
+            await fetchRecords(1);
+        } else {
+            showToast("❌ MongoDB connection error: " + (data.detail || "Authentication failed. Please verify your MongoDB Atlas password."), "error");
+        }
+    } catch (err) {
+        showToast("❌ Error connecting to backend: " + err.message, "error");
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `<i data-lucide="check" class="w-3.5 h-3.5"></i> Connect MongoDB`;
+            refreshIcons();
+        }
+    }
+}
+
+window.submitMongoPassword = submitMongoPassword;
+window.showChangeMongoPasswordForm = showChangeMongoPasswordForm;
+window.updateMongoModalUI = updateMongoModalUI;
 
 function openCloudDbModal() {
     openLanDevicesModal();

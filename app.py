@@ -21,6 +21,8 @@ import json
 import csv
 
 from database import (
+    get_database_status,
+    configure_mongodb_password,
     init_db,
     backup_database_json,
     restore_database_json,
@@ -218,12 +220,34 @@ def remove_master_user(user_id: int):
 
 async def get_system_info():
     lan_ip = get_local_ip()
+    db_status = get_database_status()
     return {
         "app_name": "Khodal Office Data Hub",
         "lan_ip": lan_ip,
         "local_url": "http://localhost:8000",
-        "office_share_url": f"http://{lan_ip}:8000"
+        "office_share_url": f"http://{lan_ip}:8000",
+        "database": db_status
     }
+
+@app.post("/api/database/config-mongo")
+
+async def config_mongo(payload: Dict[str, Any]):
+    password = payload.get("password") or payload.get("db_password") or ""
+    uri = payload.get("uri") or payload.get("mongodb_uri") or ""
+    if uri:
+        from database import init_mongo_connection
+        ok = init_mongo_connection(uri)
+        if ok:
+            return {"status": "success", "message": "Connected to MongoDB Atlas!", "database": get_database_status()}
+        else:
+            raise HTTPException(status_code=400, detail="Failed to connect to MongoDB with provided URI.")
+    if password:
+        ok, msg = configure_mongodb_password(password)
+        if ok:
+            return {"status": "success", "message": msg, "database": get_database_status()}
+        else:
+            raise HTTPException(status_code=400, detail=msg)
+    raise HTTPException(status_code=400, detail="Please provide your database password.")
 
 @app.get("/api/progress")
 
@@ -231,7 +255,7 @@ async def get_progress(
     date: Optional[str] = Query(None, description="Date filter YYYY-MM-DD"),
     service_type: Optional[str] = Query(None, description="Service category")
 ):
-    stats = get_daily_progress_stats(date_str=date, service_type=service_type)
+    stats = get_daily_progress_stats(date_filter=date, service_type=service_type)
     return stats
 
 @app.get("/api/records")
