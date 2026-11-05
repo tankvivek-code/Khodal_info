@@ -35,12 +35,10 @@ NON_NAME_WORDS = {
     "CHIRAG JARIYA", "DHARMESH JARIYA", "DHARSH JARIYA", "MO NO BAKI", "PAYMENT BAKI"
 }
 
-
 def clean_header_name(header: Any) -> str:
     s = str(header).lower().strip()
     s = re.sub(r"[_\-\.\(\)\[\]\/\\:]+", " ", s)
     return " ".join(s.split())
-
 
 def clean_phone(val: Any) -> Tuple[str, str]:
     if pd.isna(val) or val is None:
@@ -61,7 +59,6 @@ def clean_phone(val: Any) -> Tuple[str, str]:
     m = PHONE_REGEX.search(digits)
     norm = m.group(1) if m else (digits if len(digits) == 10 else "")
     return s, norm
-
 
 from datetime import datetime, timedelta
 
@@ -114,7 +111,6 @@ def normalize_date_str(val: Any) -> str:
             return f"{year}-{int(parts[1]):02d}-{int(parts[0]):02d}"
     return s
 
-
 def extract_date_from_sid(sid: str) -> str:
     """
     Aadhaar SID enrolment numbers contain the exact timestamp:
@@ -127,7 +123,6 @@ def extract_date_from_sid(sid: str) -> str:
     if m:
         return f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
     return ""
-
 
 def detect_service_type_from_content(headers: List[str], file_path: str) -> str:
     cleaned = [clean_header_name(h) for h in headers]
@@ -150,7 +145,6 @@ def detect_service_type_from_content(headers: List[str], file_path: str) -> str:
     if "aayushman" in fname or "ayushman" in fname or "ration" in fname:
         return "aayushman"
     return "general"
-
 
 def parse_single_sheet_df(
     df: pd.DataFrame,
@@ -522,7 +516,6 @@ def parse_single_sheet_df(
 
     return records, service_type, headers
 
-
 def parse_service_excel_or_csv(file_path: str, file_id: int, forced_service: Optional[str] = None) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     """
     Parses any office spreadsheet (Excel or CSV), reading ALL sheets if multiple exist.
@@ -603,7 +596,6 @@ def parse_service_excel_or_csv(file_path: str, file_id: int, forced_service: Opt
     }
     return all_records, summary
 
-
 def format_date_dd_mm_yyyy(val: Any) -> str:
     if pd.isna(val) or val is None or not str(val).strip():
         return ""
@@ -615,7 +607,6 @@ def format_date_dd_mm_yyyy(val: Any) -> str:
     if m2:
         return f"{int(m2.group(1)):02d}-{int(m2.group(2)):02d}-{m2.group(3)}"
     return s
-
 
 def export_records_to_excel(records: List[Dict[str, Any]], export_dir: str, service_type: Optional[str] = None) -> str:
     os.makedirs(export_dir, exist_ok=True)
