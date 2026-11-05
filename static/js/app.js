@@ -3714,6 +3714,10 @@ async function fetchSystemInfo() {
 
 
             if (displayEl) displayEl.textContent = data.office_share_url.replace("http://", "");
+            const modalUrlEl = document.getElementById("lan-modal-url");
+            if (modalUrlEl) modalUrlEl.textContent = data.office_share_url;
+            const modalOpenLink = document.getElementById("lan-modal-open-link");
+            if (modalOpenLink) modalOpenLink.href = data.office_share_url;
 
 
 
@@ -20344,14 +20348,19 @@ function updateDatabaseStatusBadge() {
             <div class="flex flex-wrap items-center justify-between gap-2 w-full py-0.5">
                 <div class="flex items-center gap-2 flex-wrap">
                     <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
-                        🟢 SAFE PLACE ACTIVE
+                        🟢 LOCAL SAFE PLACE ACTIVE
                     </span>
                     <span class="text-xs text-emerald-950 font-semibold">
-                        Permanent SQLite Database Connected (<code>${storeLabel}</code>). Every upload & change is stored safely on disk — immune to browser history clears.
+                        Permanent SQLite Database (<code>${storeLabel}</code>). Saved on hard drive — immune to browser history clears.
                     </span>
                 </div>
-                <div class="text-[11px] font-mono text-emerald-800 bg-emerald-100/70 px-2.5 py-0.5 rounded font-bold">
-                    Store: ${pathLabel}
+                <div class="flex items-center gap-2 flex-wrap">
+                    <button onclick="openLanDevicesModal()" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition shadow-2xs flex items-center gap-1 cursor-pointer" title="Connect Phones & Other Devices via Wi-Fi">
+                        <i data-lucide="smartphone" class="w-3.5 h-3.5"></i> Connect Other Devices
+                    </button>
+                    <div class="text-[11px] font-mono text-emerald-800 bg-emerald-100/70 px-2.5 py-0.5 rounded font-bold hidden sm:inline-block">
+                        Store: ${pathLabel}
+                    </div>
                 </div>
             </div>
         `;
@@ -24325,150 +24334,91 @@ async function handleDeleteMasterUser(userId, username) {
 
 
 
-function openCloudDbModal() {
-
-
-
+function openLanDevicesModal() {
     closeMobileMenu();
-
-
-
-    const statusBox = document.getElementById("cloud-db-status-box");
-
-
-
-    const input = document.getElementById("custom-cloud-url-input");
-
-
-
-    if (input) input.value = customCloudUrl || "";
-
-
-
-    
-
-
-
-    if (statusBox) {
-
-
-
-        if (!isStaticMode) {
-
-
-
-            statusBox.className = "p-3.5 rounded-xl border border-emerald-300 bg-emerald-50 text-xs text-emerald-900";
-
-
-
-            statusBox.innerHTML = `
-
-
-
-                <div class="flex items-center gap-2 font-bold text-emerald-800">
-
-
-
-                    <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-
-
-
-                    <span>🟢 Safe Place Active: Connected to Database Server</span>
-
-
-
-                </div>
-
-
-
-                <div class="text-[11px] text-emerald-700 mt-1 font-mono">
-
-
-
-                    Active API: ${API_BASE || window.location.origin}
-
-
-
-                </div>
-
-
-
-                <div class="text-[11px] text-emerald-800 mt-1">
-
-
-
-                    All records are saved directly to database. Clearing browser history will NOT delete your data!
-
-
-
-                </div>
-
-
-
-            `;
-
-
-
-        } else {
-
-
-
-            statusBox.className = "p-3.5 rounded-xl border border-amber-300 bg-amber-50 text-xs text-amber-900";
-
-
-
-            statusBox.innerHTML = `
-
-
-
-                <div class="flex items-center gap-2 font-bold text-amber-900">
-
-
-
-                    <span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
-
-
-
-                    <span>⚠️ Temporary Browser Mode (${staticRecords.length} records in browser memory)</span>
-
-
-
-                </div>
-
-
-
-                <div class="text-[11px] text-amber-800 mt-1">
-
-
-
-                    Running in client-side static mode. Clearing browser history will wipe browser storage. Connect a Cloud Backend or use START_KHODAL_OFFICE.bat on your PC for a permanent Safe Place!
-
-
-
-                </div>
-
-
-
-            `;
-
-
-
-        }
-
-
-
-    }
-
-
-
     openModal("modal-cloud-db");
 
+    const statusBox = document.getElementById("cloud-db-status-box");
+    const lanUrlSpan = document.getElementById("lan-modal-url");
+    const lanOpenLink = document.getElementById("lan-modal-open-link");
+    const input = document.getElementById("custom-cloud-url-input");
+    if (input) input.value = customCloudUrl || "";
 
+    const effectiveLanUrl = lanShareUrl || (window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1" ? window.location.origin : `http://${window.location.hostname || "localhost"}:8000`);
 
+    if (lanUrlSpan) {
+        lanUrlSpan.textContent = effectiveLanUrl;
+    }
+    if (lanOpenLink) {
+        lanOpenLink.href = effectiveLanUrl;
+    }
+
+    if (statusBox) {
+        if (!isStaticMode) {
+            statusBox.className = "p-3 rounded-xl border border-emerald-300 bg-emerald-50 text-xs text-emerald-900";
+            statusBox.innerHTML = `
+                <div class="flex items-center gap-2 font-bold text-emerald-800">
+                    <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <span>🟢 Safe Place Active: Local Hard Drive SQLite Database</span>
+                </div>
+                <div class="text-[11px] text-emerald-700 mt-1 font-mono">
+                    File: D:\\Khodal_info\\data\\khodal_office.db
+                </div>
+                <div class="text-[11px] text-emerald-800 mt-1">
+                    All client records and uploaded Excel sheets are permanently stored on this computer. Clearing browser history on this PC or any phone will NEVER delete your data.
+                </div>
+            `;
+        } else {
+            statusBox.className = "p-3 rounded-xl border border-amber-300 bg-amber-50 text-xs text-amber-900";
+            statusBox.innerHTML = `
+                <div class="flex items-center gap-2 font-bold text-amber-900">
+                    <span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+                    <span>⚠️ Static Mode / Browser Memory (${staticRecords ? staticRecords.length : 0} records)</span>
+                </div>
+                <div class="text-[11px] text-amber-800 mt-1">
+                    To use the permanent hard drive database, run <strong>START_KHODAL_OFFICE.bat</strong> on your computer and open <strong>http://localhost:8000</strong>.
+                </div>
+            `;
+        }
+    }
+
+    renderLanQrCode(effectiveLanUrl);
     refreshIcons();
+}
 
+function openCloudDbModal() {
+    openLanDevicesModal();
+}
 
+function renderLanQrCode(url) {
+    const qrContainer = document.getElementById("lan-qr-code");
+    if (!qrContainer) return;
+    qrContainer.innerHTML = "";
+    if (typeof QRCode !== "undefined") {
+        try {
+            new QRCode(qrContainer, {
+                text: url,
+                width: 140,
+                height: 140,
+                colorDark: "#0f172a",
+                colorLight: "#ffffff",
+                correctLevel: QRCode.CorrectLevel.M
+            });
+            return;
+        } catch (e) {
+            console.warn("QRCode error:", e);
+        }
+    }
+    qrContainer.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(url)}" alt="Scan QR Code" class="w-[140px] h-[140px] rounded-lg border border-slate-200">`;
+}
 
+function copyLanModalUrl() {
+    const effectiveLanUrl = lanShareUrl || (window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1" ? window.location.origin : `http://${window.location.hostname || "localhost"}:8000`);
+    navigator.clipboard.writeText(effectiveLanUrl).then(() => {
+        showToast(`Copied Wi-Fi URL: ${effectiveLanUrl}`, "success");
+    }).catch(() => {
+        showToast("Could not copy link automatically", "error");
+    });
 }
 
 

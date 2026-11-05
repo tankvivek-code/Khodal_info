@@ -1,6 +1,4 @@
-# 🏢 Khodal Office Data Hub — Daily Work Progress & Search
-
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/tankvivek-code/Khodal_info)
+# 🏢 Khodal Office Data Hub — Local Office PC & Multi-Device Hub
 
 A complete, high-performance office management system specially built to store, track, and search daily client work data across **4 Divided Service Categories**:
 
@@ -11,58 +9,63 @@ A complete, high-performance office management system specially built to store, 
 
 ---
 
-## 📱 100% Fully Responsive (Mobile, Tablet & Desktop)
+## 🛡️ Permanent Local Safe Place Architecture
 
-The entire interface has been upgraded with a responsive mobile-first architecture:
-- 📱 **Mobile (320px–480px)**: Compact navigation bar with 1-tap `+` (New Entry) and `Upload` buttons. Secondary actions (Master Users, Cloud DB, Backup DB, Uploaded Files, Master Excel Template, LAN Share) smoothly expand from a collapsible drawer menu.
-- 🪪 **Swipeable Service Tabs**: Smooth horizontal touch swiping across all 5 service categories without cutting off badges or breaking screen bounds.
-- 📊 **Responsive Metric Cards**: 2-column grid on phones, 3-column grid on tablets, and 6-column grid on desktops with auto-scaling text.
-- 📋 **Table Freeze Pane & Sticky Header**: On small screens, the table scrolls horizontally with momentum (`-webkit-overflow-scrolling: touch`), a sticky header (`thead th`), and a sticky primary column (`#` / Sr No) with a shadow boundary so you always retain row context.
-- 🪟 **Adaptive Modals**: All modals use dynamic viewport units (`max-height: 92dvh`), scrollable form bodies, and flexible grids (`grid-cols-1 sm:grid-cols-2`) to stay fully accessible even with on-screen mobile keyboards.
-- 🎯 **Touch Optimizations**: Hit targets are calibrated to 40–44px, and inputs are protected against unwanted iOS Safari auto-zoom.
+### 🟢 Local Hard Drive SQLite Database (`data/khodal_office.db`)
+- **Permanent Local Storage**: All uploaded office records and client files are saved directly to the **SQLite Database on your local hard drive (`D:\Khodal_info\data\khodal_office.db`)** and the `uploads/` folder.
+- **Immune to Browser History Cleaning**: Clearing your browser history, cache, or cookies in Google Chrome, Microsoft Edge, or Firefox on this computer or any connected mobile device will **NEVER delete your office records** because data lives on the computer's hard drive, not in temporary browser memory.
+- **Auto-Sync Backups**: Every write automatically mirrors to `data/backups/khodal_backup_latest.json` for rolling disaster recovery.
 
 ---
 
-## 🌐 Live & Production Deployment
+## 📱 Multi-Device Wi-Fi Connection (Phones, Tablets & Laptops)
 
-When deployed to production (live on the internet):
-- **Central Cloud Database**: The application runs on your live server or cloud host (`https://khodal-office-hub.onrender.com/`). All client records and uploaded Excel files are stored on that server's persistent disk storage (`data/khodal_office.db` and `uploads/`).
-- **All Clients Share the Same Data**: Anyone who visits your live URL from Chrome, Edge, Safari, iPhone, Android, or desktop connects to the **same live database**.
-- **No Browser History Vulnerability**: A client clearing browser history on their phone or laptop has **zero impact** on the server's database. The data is safely hosted on the cloud server.
+You can use Khodal Office Hub across **multiple devices at the same time** (mobile phones, tablets, other staff laptops) all sharing the **same central database** on your main PC:
 
-### 🚀 Production Deployment Options
+### Quick 3-Step Setup for Any Device:
+1. **Connect to Same Wi-Fi**: Connect your mobile phone or laptop to the **same office Wi-Fi** or mobile hotspot as this main computer.
+2. **Scan QR Code or Open Link**:
+   - On the main computer, click the **📱 Connect Devices** button in the top navigation bar.
+   - Point your phone camera at the **QR Code** displayed on screen, or type the Wi-Fi link into Chrome/Safari (e.g. `http://192.168.1.7:8000`).
+3. **Start Working**: Any record created or Excel sheet uploaded on your phone is **automatically saved directly into the main computer's database (`khodal_office.db`)**.
 
-#### Option 1: 1-Click Free Deploy on Render.com (Recommended for Live Link)
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/tankvivek-code/Khodal_info)
-
-1. Click the **Deploy to Render** button above (or the purple button in the **Cloud DB** modal on the live site).
-2. Render automatically builds and hosts your backend at `https://khodal-office-hub.onrender.com` (100% free, zero credit card required).
-3. Your live GitHub Pages site (`https://tankvivek-code.github.io/Khodal_info`) automatically detects and connects to your live Render backend, permanently saving all uploaded Excel sheets and client records into the cloud database (`khodal_office.db`).
-
-#### Option 2: Docker Compose on Cloud VPS (DigitalOcean, AWS, Linode)
-```bash
-git clone <your-repo-url> khodal-info
-cd khodal-info
-docker compose up -d
-```
-All records are permanently stored in the `khodal_office_data` Docker volume.
-
-#### Option 3: Local Office Server with Free Public HTTPS (Cloudflare Tunnel)
-1. Run `START_KHODAL_OFFICE.bat` on the office computer.
-2. Run Cloudflare Tunnel:
-   ```bash
-   cloudflared tunnel --url http://localhost:8000
-   ```
+### 🔓 Windows Firewall Troubleshooting (`ALLOW_FIREWALL_PORT_8000.bat`)
+If your mobile phone or another laptop says *“Site can’t be reached”* or hangs when connecting:
+- Windows Defender Firewall is blocking inbound connections on port 8000.
+- Double-click **`ALLOW_FIREWALL_PORT_8000.bat`** in `D:\Khodal_info`.
+- This unblocks port 8000 in Windows Firewall with 1 click, allowing all office devices to connect instantly!
 
 ---
 
-## 🛡️ Local Safe Place Architecture
+## 💻 How to Run on This Computer Daily
 
-### 🟢 SQLite Hard Drive Database (`data/khodal_office.db`)
-- **Permanent Local Storage**: All uploaded office records and client files are saved to the **SQLite Database file on your local hard drive (`D:\Khodal_info\data\khodal_office.db`)** and `uploads/` folder.
-- **Immune to Browser History Cleaning**: Clearing your browser history, cache, or cookies in Google Chrome, Microsoft Edge, or Firefox will **NEVER** delete your uploaded office data because the database lives on your hard drive, not in temporary browser storage.
-- **Cross-Protocol Auto-Detection**: Whether you open the app via `http://localhost:8000` or double-click `index.html` (`file:///`), the application automatically links to the local SQLite database server.
-- **Multi-Tiered Backup & Recovery**: Records are also mirrored to `data/records.js` on disk, persistent IndexedDB, and rolling JSON backups.
+### Method 1: Double-Click Desktop Shortcut (Fastest)
+1. Go to your Windows **Desktop**.
+2. Double-click the **"Khodal Office Data Hub"** shortcut icon.
+3. Your browser automatically opens to `http://localhost:8000`.
+
+### Method 2: Batch Launcher
+1. Open folder `D:\Khodal_info`.
+2. Double-click **`START_KHODAL_OFFICE.bat`**.
+3. It displays your local URL (`http://localhost:8000`) and your office Wi-Fi URL (`http://<LAN_IP>:8000`), then launches your browser automatically.
+
+---
+
+## 🆕 How to Set Up on a Brand New Computer (`SETUP_NEW_DEVICE.bat`)
+
+If you get a new computer or want to install Khodal Office Hub on a secondary PC:
+
+1. Copy the entire **`Khodal_info`** folder onto the new computer (e.g. onto `D:\` or `C:\`).
+2. Double-click **`SETUP_NEW_DEVICE.bat`**:
+   - Verifies Python 3.10+ installation.
+   - Automatically installs required dependencies (`pip install -r requirements.txt`).
+   - Creates required folders (`data`, `uploads`, `exports`).
+   - Automatically configures Windows Firewall for port 8000.
+   - Creates the **"Khodal Office Data Hub"** icon on the new computer's Desktop.
+   - Starts the database server and opens `http://localhost:8000`!
+3. **To Transfer Your Existing Data**:
+   - Copy the `data\khodal_office.db` file from the old computer into the new computer's `data\` folder, OR
+   - On the old computer, click **Backup DB** -> **Download Backup (.json)**, then on the new computer, click **Restore Backup** and select that file.
 
 ---
 
@@ -104,28 +107,9 @@ All records are permanently stored in the `khodal_office_data` Docker volume.
 - 🏷️ **Quick Filters**: One-click filter for **Completed Only**, **In-Process Only**, or **Baki Cases Only**.
 - 💬 **Direct WhatsApp Web**: Instant green chat button next to every customer phone number (`https://wa.me/91<number>`).
 
-### 5. 📥 One-Click Export
+### 5. 📥 One-Click Export & Backup
 - **Export to Excel (`.xlsx`)**: Downloads a formatted spreadsheet organized according to the selected service category.
-- **Export to CSV**: Quick lightweight text export.
-
-### 6. 🌐 Office Network Sharing
-- Connect from any computer, tablet, or mobile phone on the same office Wi-Fi at `http://<your-lan-ip>:8000`.
-
----
-
-## 🚀 How to Run Locally
-
-### Method 1: Double-Click Desktop Shortcut (Recommended)
-1. Run **`CREATE_DESKTOP_SHORTCUT.bat`** once to create the **"Khodal Office Data Hub"** icon on your Desktop.
-2. Double-click the shortcut anytime to launch the safe place database server. Your browser will automatically open to `http://localhost:8000`.
-
-### Method 2: Batch Launcher
-Double-click **`START_KHODAL_OFFICE.bat`** in `D:\Khodal_info`.
-
-### Method 3: Command Line
-```powershell
-python app.py
-```
+- **1-Click JSON Backup**: Downloads `khodal_backup_<date>.json` containing all client records and files for instant transfer to another device.
 
 ---
 
