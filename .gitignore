@@ -3,10 +3,17 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-# SQLite journal & WAL temp files
+# Local database files
+*.db
 *.db-journal
 *.db-wal
 *.db-shm
+*.sqlite
+*.sqlite3
+data/*.db
+data/backups/
+data/records.js
+data/records.json
 
 # Environment secrets
 .env
@@ -19,7 +26,9 @@ venv/
 env/
 ENV/
 
-# Exported files (keep folder via .gitkeep)
+# Uploads & Exports
+uploads/*
+!uploads/.gitkeep
 exports/*
 !exports/.gitkeep
 

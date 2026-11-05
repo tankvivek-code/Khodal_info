@@ -269,7 +269,7 @@
                     <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-slate-400 opacity-75"></span>
                     <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-slate-500"></span>
                 </span>
-                <span id="db-status-text" class="break-words font-medium">Detecting database connection (checking local SQLite / cloud)...</span>
+                <span id="db-status-text" class="break-words font-medium">Connecting to MongoDB Atlas Cloud Database (Cluster0)...</span>
             </div>
             <div class="flex items-center gap-3 shrink-0">
                 <button onclick="backupDatabase()" class="font-bold text-slate-600 hover:text-slate-900 underline flex items-center gap-1 cursor-pointer">
@@ -649,7 +649,7 @@
                 <strong>Khodal Office Data Hub</strong> &mdash; UC Aadhaar, Aadhaar Online, PAN Card, Ayushman Card
             </div>
             <div>
-                Local SQLite Database • Ready for Daily Office Excel & CSV Imports
+                MongoDB Atlas Cloud Database • Cluster0 • Multi-Device Real-Time Sync
             </div>
         </div>
     </footer>
@@ -953,7 +953,7 @@
         </div>
     </div>
 
-    <!-- MASTER USERS MANAGEMENT MODAL (Stored directly in SQLite Database) -->
+    <!-- MASTER USERS MANAGEMENT MODAL (Stored in MongoDB Atlas Cloud) -->
     <div id="modal-master-users" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 hidden">
         <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full responsive-modal-box flex flex-col border border-slate-200 overflow-hidden">
             <!-- Modal Header -->
@@ -1035,7 +1035,7 @@
                         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
                             <span class="text-[11px] text-slate-500 flex items-center gap-1.5">
                                 <i data-lucide="database" class="w-3.5 h-3.5 text-indigo-500 shrink-0"></i>
-                                Stored safely in SQLite database.
+                                Stored safely in MongoDB Atlas cloud database.
                             </span>
                             <button type="submit" id="add-user-submit-btn"
                                 class="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-xs font-semibold shadow-xs flex items-center justify-center gap-1.5 transition cursor-pointer">
@@ -1068,8 +1068,8 @@
                         <i data-lucide="database" class="w-5 h-5 text-white"></i>
                     </div>
                     <div>
-                        <h3 class="font-bold text-base leading-tight">☁️ Database & Cloud Safe Place Settings</h3>
-                        <p class="text-teal-100 text-xs">MongoDB Atlas Cloud + Local SQLite + Multi-Device Wi-Fi</p>
+                        <h3 class="font-bold text-base leading-tight">☁️ MongoDB Atlas Cloud Database Settings</h3>
+                        <p class="text-teal-100 text-xs">Cluster0 (cluster0.nl4cir6.mongodb.net) • Multi-Device Real-Time Sync</p>
                     </div>
                 </div>
                 <button onclick="closeModal('modal-cloud-db')" class="text-white/70 hover:text-white p-1 rounded-lg hover:bg-white/10 transition cursor-pointer">
@@ -1195,9 +1195,6 @@
 
     <!-- FLOATING TOAST CONTAINER -->
     <div id="toast-container"></div>
-
-    <!-- Preloaded Database Records for GitHub Pages & Static Mode -->
-    <script src="data/records.js?v=20261104"></script>
 
     <!-- Frontend Script -->
     <script src="static/js/app.js?v=20261104R"></script>

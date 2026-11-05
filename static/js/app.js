@@ -5477,43 +5477,26 @@ function openUploadModal() {
     const noticeEl = document.getElementById("upload-mode-notice");
     if (noticeEl) {
         noticeEl.classList.remove("hidden");
-        if (!isStaticMode) {
-            const isMongo = serverDbStatus && (serverDbStatus.engine === "mongodb" || serverDbStatus.mongodb_connected);
-            if (isMongo) {
-                noticeEl.className = "p-3 rounded-xl bg-teal-50 border border-teal-300 text-xs text-teal-900 flex items-center gap-2.5 shadow-2xs";
-                noticeEl.innerHTML = `
-                    <i data-lucide="cloud" class="w-5 h-5 text-teal-600 shrink-0"></i>
-                    <div>
-                        <strong class="font-bold text-teal-950">Target: MongoDB Atlas Cloud Database (Cluster0)</strong>
-                        <div class="text-[11px] text-teal-800">Your uploaded Excel data and client records are stored directly in MongoDB Atlas cloud. Immediately synced and accessible from all connected devices!</div>
-                    </div>
-                `;
-            } else {
-                noticeEl.className = "p-3 rounded-xl bg-emerald-50 border border-emerald-300 text-xs text-emerald-900 flex items-center gap-2.5 shadow-2xs";
-                noticeEl.innerHTML = `
-                    <i data-lucide="shield-check" class="w-5 h-5 text-emerald-600 shrink-0"></i>
-                    <div>
-                        <strong class="font-bold text-emerald-950">Target: Permanent Local Database (khodal_office.db)</strong>
-                        <div class="text-[11px] text-emerald-800">Your uploaded Excel data will be written directly into SQLite on your computer disk (D: drive). Stored permanently and immune to browser history clears!</div>
-                    </div>
-                `;
-            }
+        const isMongo = serverDbStatus && (serverDbStatus.engine === "mongodb" && serverDbStatus.mongodb_connected);
+        if (isMongo) {
+            noticeEl.className = "p-3 rounded-xl bg-teal-50 border border-teal-300 text-xs text-teal-900 flex items-center gap-2.5 shadow-2xs";
+            noticeEl.innerHTML = `
+                <i data-lucide="cloud" class="w-5 h-5 text-teal-600 shrink-0"></i>
+                <div>
+                    <strong class="font-bold text-teal-950">Target: MongoDB Atlas Cloud Database (Cluster0)</strong>
+                    <div class="text-[11px] text-teal-800">Your uploaded Excel data and client records are stored directly in MongoDB Atlas cloud. Immediately synced and accessible from all connected devices!</div>
+                </div>
+            `;
         } else {
-            noticeEl.className = "p-3 rounded-xl bg-amber-50 border border-amber-300 text-xs text-amber-900 flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-2xs";
+            noticeEl.className = "p-3 rounded-xl bg-amber-50 border border-amber-300 text-xs text-amber-900 flex items-center justify-between gap-2 shadow-2xs";
             noticeEl.innerHTML = `
                 <div>
-                    <div class="flex items-center gap-1.5 font-bold text-amber-950">
-                        <i data-lucide="alert-triangle" class="w-4 h-4 text-amber-600 shrink-0"></i>
-                        Target: Temporary Browser Memory (GitHub Pages)
-                    </div>
-                    <div class="text-[11px] text-amber-800 mt-0.5">
-                        GitHub Pages cannot write to your PC's <code>khodal_office.db</code> file directly. If you clear browser history, these records will be wiped.
-                        To save directly into <code>khodal_office.db</code>, double-click <strong>START_KHODAL_OFFICE.bat</strong> and open <strong>http://localhost:8000</strong>.
-                    </div>
+                    <strong class="font-bold text-amber-950">Target: MongoDB Atlas (Awaiting Password)</strong>
+                    <div class="text-[11px] text-amber-800">Enter your MongoDB Atlas password in Settings to save your uploaded data directly to Cluster0.</div>
                 </div>
-                <a href="http://localhost:8000" target="_blank" class="px-2.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold shrink-0 inline-flex items-center gap-1 cursor-pointer">
-                    <i data-lucide="external-link" class="w-3.5 h-3.5"></i> Open Localhost
-                </a>
+                <button onclick="openLanDevicesModal()" class="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold shrink-0 cursor-pointer">
+                    Enter Password
+                </button>
             `;
         }
     }
@@ -5626,60 +5609,47 @@ function updateDatabaseStatusBadge() {
                 banner.className = "mb-4 p-3 rounded-xl bg-teal-50 border border-teal-300 text-xs text-teal-900 transition shadow-2xs";
             }
         } else {
-            const storeLabel = isLiveCloud ? "Live Production Cloud" : "data/khodal_office.db";
-            const pathLabel = isLiveCloud ? "Live Cloud Host" : "Local Disk (D: Drive)";
             textEl.innerHTML = `
                 <div class="flex flex-wrap items-center justify-between gap-2 w-full py-0.5">
                     <div class="flex items-center gap-2 flex-wrap">
-                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
-                            🟢 LOCAL SAFE PLACE ACTIVE
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                            🟡 MONGODB ATLAS AWAITING PASSWORD
                         </span>
-                        <span class="text-xs text-emerald-950 font-semibold">
-                            Permanent SQLite Database (<code>${storeLabel}</code>). Saved on hard drive — immune to browser history clears.
+                        <span class="text-xs text-amber-950 font-semibold">
+                            Cluster0 (<code>cluster0.nl4cir6.mongodb.net</code>) is ready. Enter password for <strong>tankvivek65_db_user</strong> to activate.
                         </span>
                     </div>
                     <div class="flex items-center gap-2 flex-wrap">
-                        <button onclick="openLanDevicesModal()" class="px-2.5 py-1 bg-teal-700 hover:bg-teal-800 text-white rounded-lg text-xs font-bold transition shadow-2xs flex items-center gap-1 cursor-pointer" title="Connect MongoDB Atlas Cloud Database">
-                            <i data-lucide="database" class="w-3.5 h-3.5"></i> Activate MongoDB Cloud
+                        <button onclick="openLanDevicesModal()" class="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition shadow-2xs flex items-center gap-1 cursor-pointer">
+                            <i data-lucide="key" class="w-3.5 h-3.5"></i> Enter Password Now
                         </button>
-                        <button onclick="openLanDevicesModal()" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition shadow-2xs flex items-center gap-1 cursor-pointer" title="Connect Phones & Other Devices via Wi-Fi">
-                            <i data-lucide="smartphone" class="w-3.5 h-3.5"></i> Connect Other Devices
-                        </button>
-                        <div class="text-[11px] font-mono text-emerald-800 bg-emerald-100/70 px-2.5 py-0.5 rounded font-bold hidden sm:inline-block">
-                            Store: ${pathLabel}
-                        </div>
                     </div>
                 </div>
             `;
             if (banner) {
-                banner.className = "mb-4 p-3 rounded-xl bg-emerald-50 border border-emerald-300 text-xs text-emerald-900 transition shadow-2xs";
+                banner.className = "mb-4 p-3 rounded-xl bg-amber-50 border border-amber-300 text-xs text-amber-900 transition shadow-2xs";
             }
         }
-        checkAndPromptBrowserSync();
     } else {
-        const count = staticRecords ? staticRecords.length : 0;
         textEl.innerHTML = `
             <div class="flex flex-wrap items-center justify-between gap-2 w-full py-0.5">
                 <div class="flex items-center gap-2 flex-wrap">
-                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
-                        ⚠️ TEMPORARY BROWSER STORAGE (${count} records)
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-100 text-rose-900 border border-rose-300">
+                        🔴 SERVER OFFLINE
                     </span>
-                    <span class="text-xs text-amber-950 font-medium">
-                        You are viewing <strong>GitHub Pages / Static Mode</strong>. Browsers cannot write to your PC's <code>khodal_office.db</code> file from the internet! To save permanently on your PC, run <strong>START_KHODAL_OFFICE.bat</strong> and open <strong>http://localhost:8000</strong>.
+                    <span class="text-xs text-rose-950 font-semibold">
+                        FastAPI backend server is not responding. Run <code>python app.py</code> in the terminal.
                     </span>
                 </div>
                 <div class="flex items-center gap-2 flex-wrap">
-                    <button onclick="backupDatabase()" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition shadow-2xs flex items-center gap-1 cursor-pointer" title="Download backup file to import into SQLite">
-                        <i data-lucide="download" class="w-3.5 h-3.5"></i> Download Backup (.json)
+                    <button onclick="checkServerConnection()" class="px-2.5 py-1 bg-slate-700 hover:bg-slate-800 text-white rounded-lg text-xs font-bold transition shadow-2xs flex items-center gap-1 cursor-pointer">
+                        <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Retry Connection
                     </button>
-                    <a href="http://localhost:8000" target="_blank" class="px-2.5 py-1 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-xs font-bold transition shadow-2xs flex items-center gap-1 cursor-pointer" title="Open Localhost Database Server">
-                        <i data-lucide="external-link" class="w-3.5 h-3.5"></i> Open Localhost
-                    </a>
                 </div>
             </div>
         `;
         if (banner) {
-            banner.className = "mb-4 p-3 rounded-xl bg-amber-50 border border-amber-300 text-xs text-amber-900 transition shadow-2xs";
+            banner.className = "mb-4 p-3 rounded-xl bg-rose-50 border border-rose-300 text-xs text-rose-900 transition shadow-2xs";
         }
     }
     refreshIcons();
@@ -6774,44 +6744,33 @@ function openLanDevicesModal() {
     }
 
     if (statusBox) {
-        const isMongo = serverDbStatus && (serverDbStatus.engine === "mongodb" || serverDbStatus.mongodb_connected);
-        if (!isStaticMode && isMongo) {
+        const isMongo = serverDbStatus && (serverDbStatus.engine === "mongodb" && serverDbStatus.mongodb_connected);
+        if (isMongo) {
             statusBox.className = "p-3 rounded-xl border border-teal-300 bg-teal-50 text-xs text-teal-900";
             statusBox.innerHTML = `
                 <div class="flex items-center gap-2 font-bold text-teal-900">
                     <span class="w-2.5 h-2.5 rounded-full bg-teal-500 animate-pulse"></span>
-                    <span>🟢 Cloud Safe Place Active: MongoDB Atlas (Cluster0)</span>
+                    <span>🟢 MongoDB Atlas Cloud Database Active</span>
                 </div>
                 <div class="text-[11px] text-teal-800 mt-1 font-mono">
                     Cluster: cluster0.nl4cir6.mongodb.net | DB: khodal_office
                 </div>
                 <div class="text-[11px] text-teal-900 mt-1">
-                    All client records and uploaded Excel sheets are permanently stored in MongoDB Atlas cloud. Multi-device access from phones and laptops is fully active in real-time.
-                </div>
-            `;
-        } else if (!isStaticMode) {
-            statusBox.className = "p-3 rounded-xl border border-emerald-300 bg-emerald-50 text-xs text-emerald-900";
-            statusBox.innerHTML = `
-                <div class="flex items-center gap-2 font-bold text-emerald-800">
-                    <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                    <span>🟢 Safe Place Active: Local Hard Drive SQLite Database</span>
-                </div>
-                <div class="text-[11px] text-emerald-700 mt-1 font-mono">
-                    File: D:\\Khodal_info\\data\\khodal_office.db
-                </div>
-                <div class="text-[11px] text-emerald-800 mt-1">
-                    All client records and uploaded Excel sheets are permanently stored on this computer. Enter your MongoDB Atlas password below to activate cloud synchronization.
+                    All client records and uploaded Excel files are stored in MongoDB Atlas. Every connected phone and laptop shares real-time data automatically.
                 </div>
             `;
         } else {
             statusBox.className = "p-3 rounded-xl border border-amber-300 bg-amber-50 text-xs text-amber-900";
             statusBox.innerHTML = `
                 <div class="flex items-center gap-2 font-bold text-amber-900">
-                    <span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
-                    <span>⚠️ Static Mode / Browser Memory (${staticRecords ? staticRecords.length : 0} records)</span>
+                    <span class="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse"></span>
+                    <span>🟡 MongoDB Atlas Awaiting Password</span>
+                </div>
+                <div class="text-[11px] text-amber-800 mt-1 font-mono">
+                    Cluster: cluster0.nl4cir6.mongodb.net (User: tankvivek65_db_user)
                 </div>
                 <div class="text-[11px] text-amber-800 mt-1">
-                    To use the permanent hard drive database, run <strong>START_KHODAL_OFFICE.bat</strong> on your computer and open <strong>http://localhost:8000</strong>.
+                    Enter your MongoDB Atlas password below to activate cloud synchronization.
                 </div>
             `;
         }
