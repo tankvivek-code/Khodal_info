@@ -1,5 +1,7 @@
 # 🏢 Khodal Office Data Hub — Daily Work Progress & Search
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/tankvivek-code/Khodal_info)
+
 A complete, high-performance office management system specially built to store, track, and search daily client work data across **4 Divided Service Categories**:
 
 1. 🪪 **Category 1: UC Aadhaar** (`Date`, `SID Number`, `Name`, `Status`, `Total Amt`, `Fee`, `Mobile/Others`, `Remarks`)
@@ -30,9 +32,12 @@ When deployed to production (live on the internet):
 
 ### 🚀 Production Deployment Options
 
-#### Option 1: Render.com (Live Web Service)
-- **Live URL**: `https://khodal-office-hub.onrender.com/`
-- Configured via `render.yaml` with persistent disk mounting `/var/data` for zero-data-loss durability.
+#### Option 1: 1-Click Free Deploy on Render.com (Recommended for Live Link)
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/tankvivek-code/Khodal_info)
+
+1. Click the **Deploy to Render** button above (or the purple button in the **Cloud DB** modal on the live site).
+2. Render automatically builds and hosts your backend at `https://khodal-office-hub.onrender.com` (100% free, zero credit card required).
+3. Your live GitHub Pages site (`https://tankvivek-code.github.io/Khodal_info`) automatically detects and connects to your live Render backend, permanently saving all uploaded Excel sheets and client records into the cloud database (`khodal_office.db`).
 
 #### Option 2: Docker Compose on Cloud VPS (DigitalOcean, AWS, Linode)
 ```bash

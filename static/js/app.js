@@ -1359,13 +1359,18 @@ function apiUrl(path) {
 
 
 async function detectApiBase() {
+    // 0. Recover cloud URL from IndexedDB if not found in localStorage
+    if (!customCloudUrl) {
+        try {
+            const idbUrl = await getFromIndexedDB("custom_cloud_url");
+            if (idbUrl) {
+                customCloudUrl = idbUrl;
+                try { localStorage.setItem(CUSTOM_CLOUD_URL_KEY, idbUrl); } catch (e) {}
+            }
+        } catch (e) {}
+    }
 
-
-
-    // 1. Check custom Cloud Server URL if provided (for GitHub Pages live deployment)
-
-
-
+    // 1. Check custom Cloud Server URL if provided
     if (customCloudUrl) {
 
 
@@ -1522,6 +1527,28 @@ async function detectApiBase() {
 
 
 
+    }
+
+    // 4. Auto-detect Render Cloud backend if running on GitHub Pages
+    if (isGitHubPages) {
+        const defaultCandidates = ["https://khodal-office-hub.onrender.com"];
+        for (const cand of defaultCandidates) {
+            try {
+                const controller = new AbortController();
+                const to = setTimeout(() => controller.abort(), 2500);
+                const res = await fetch(`${cand}/api/info`, { signal: controller.signal });
+                clearTimeout(to);
+                if (res.ok) {
+                    API_BASE = cand;
+                    customCloudUrl = cand;
+                    try {
+                        localStorage.setItem(CUSTOM_CLOUD_URL_KEY, cand);
+                        saveToIndexedDB("custom_cloud_url", cand).catch(() => {});
+                    } catch (e) {}
+                    return true;
+                }
+            } catch (e) {}
+        }
     }
 
 
@@ -24495,6 +24522,7 @@ async function saveCustomCloudUrl() {
 
 
         localStorage.setItem(CUSTOM_CLOUD_URL_KEY, customCloudUrl);
+        saveToIndexedDB("custom_cloud_url", customCloudUrl).catch(() => {});
 
 
 
